@@ -134,3 +134,11 @@ def test_tool_message_with_name_but_no_id():
     out, losses = OPENAI.write(conv)
     assert losses == []
     assert out["messages"][1]["function_call"]["name"] == "find"
+
+
+def test_tools_given_as_json_string():
+    tools = '[{"type": "function", "function": {"name": "f", "parameters": {"type": "object"}}}]'
+    conv = OPENAI.read({"messages": [], "tools": tools})
+    assert conv.tools[0].name == "f"
+    with pytest.raises(FormatError, match="not JSON"):
+        OPENAI.read({"messages": [], "tools": "[oops"})

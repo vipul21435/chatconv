@@ -99,7 +99,14 @@ class OpenAI(Format):
         messages = record.get("messages")
         expect(isinstance(messages, list), "record has no messages list")
         conv = Conversation(meta=extras(record, {"messages", "tools"}))
-        for spec in record.get("tools") or []:
+        tools = record.get("tools") or []
+        if isinstance(tools, str):  # some dataset exports store the list as a JSON string
+            try:
+                tools = json.loads(tools)
+            except ValueError as exc:
+                raise FormatError("tools field is not JSON") from exc
+        expect(isinstance(tools, list), "tools must be a list")
+        for spec in tools:
             expect(isinstance(spec, dict), "tool declaration must be an object")
             expect(spec.get("type", "function") == "function", "unsupported tool type")
             expect(not extras(spec, {"type", "function"}), "unknown tool declaration field")
