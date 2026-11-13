@@ -27,10 +27,11 @@ What converting the Anthropic test fixture to ShareGPT would lose:
 
 ```
 $ chatconv losses tests/fixtures/anthropic.jsonl --to sharegpt
-records 3  converted 3  lossless 0  rejected 0  (2,995 records/s)
+records 3  converted 3  lossless 0  rejected 0  (3,268 records/s)
 sources: anthropic 3
   tool_result_names_dropped         2 records ( 66.7%)  tool names on tool results removed
   tool_ids_dropped                  2 records ( 66.7%)  tool-call ids removed
+  order_broken                      2 records ( 66.7%)  entries break the strict user / assistant alternation of the layout (written as they are)
   turn_split                        1 records ( 33.3%)  assistant text and tool calls written as separate turns
   images_dropped                    1 records ( 33.3%)  image parts removed
   extra_dropped                     1 records ( 33.3%)  fields the target format has no place for removed
@@ -54,7 +55,7 @@ Convert, with rejected records and per-record losses in side files:
 ```
 $ chatconv convert tests/fixtures/sharegpt.jsonl --to anthropic -o out.jsonl \
     --rejects rejects.jsonl --losses losses.jsonl
-records 3  converted 3  lossless 1  rejected 0  (2,682 records/s)
+records 3  converted 3  lossless 1  rejected 0  (2,813 records/s)
 sources: sharegpt 3
   tool_ids_invented                 2 records ( 66.7%)  tool-call ids created where the source had none
 ```
@@ -175,51 +176,61 @@ python scripts/measure.py ~/data/chatconv
 
 | source (format, records) | target | lossless | most common losses (share of records) | rec/s |
 |---|---|---:|---|---:|
-| glaive_toolcall_en, ShareGPT, 1,000 | openai | 48.2% | tool_ids_invented 52% | 4,184 |
-|  | anthropic | 48.2% | tool_ids_invented 52% | 4,179 |
-|  | gemini | 48.2% | tool_result_names_inferred 52% | 4,169 |
-|  | sharegpt | 100.0% | - | 3,733 |
-|  | alpaca | 33.0% | tools_dropped 67%, tool_calls_as_text 52%, tool_results_as_text 52% | 3,895 |
-|  | chatml | 33.0% | tools_dropped 67%, tool_calls_as_text 52% | 3,820 |
-|  | llama3 | 33.0% | tools_dropped 67%, tool_calls_as_text 52%, tool_results_as_text 52% | 4,096 |
-|  | mistral | 33.0% | tools_dropped 67%, tool_calls_as_text 52%, tool_results_as_text 52% | 3,831 |
-| hermes-function-calling-v1, ShareGPT, 1,893 | openai | 67.7% | tool_ids_invented 32% | 4,094 |
-|  | anthropic | 42.4% | tool_ids_invented 58% | 4,872 |
-|  | gemini | 100.0% | - | 4,746 |
-|  | sharegpt | 100.0% | - | 3,653 |
-|  | alpaca | 3.2% | tools_dropped 97%, tool_calls_as_text 58%, text_joined 32% | 4,703 |
-|  | chatml | 3.2% | tools_dropped 97%, tool_calls_as_text 58%, text_joined 32% | 3,925 |
-|  | llama3 | 3.2% | tools_dropped 97%, tool_calls_as_text 58%, text_joined 32% | 3,872 |
-|  | mistral | 0.0% | text_joined 100%, system_folded 100%, tools_dropped 97% | 3,654 |
-| toolace-parsed, OpenAI, 2,500 | openai | 73.0% | tool_ids_invented 27% | 2,628 |
-|  | anthropic | 17.3% | tool_ids_invented 83%, tool_result_names_dropped 0% | 2,609 |
-|  | gemini | 100.0% | - | 2,456 |
-|  | sharegpt | 68.2% | tool_result_names_dropped 32% | 2,262 |
-|  | alpaca | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_results_as_text 32% | 2,089 |
-|  | chatml | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_result_names_dropped 32% | 2,204 |
-|  | llama3 | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_results_as_text 32% | 2,112 |
-|  | mistral | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_results_as_text 32% | 2,213 |
-| alpaca-cleaned, Alpaca, 51,760 | openai | 100.0% | - | 11,300 |
-|  | anthropic | 100.0% | - | 8,484 |
-|  | gemini | 100.0% | - | 12,024 |
-|  | sharegpt | 63.0% | text_joined 37% | 11,592 |
-|  | alpaca | 100.0% | - | 11,796 |
-|  | chatml | 63.0% | text_joined 37% | 8,287 |
-|  | llama3 | 63.0% | text_joined 37% | 13,457 |
-|  | mistral | 63.0% | text_joined 37% | 15,670 |
+| glaive_toolcall_en, ShareGPT, 1,000 | openai | 48.2% | tool_ids_invented 52% | 699 |
+|  | anthropic | 48.2% | tool_ids_invented 52% | 1,027 |
+|  | gemini | 48.2% | tool_result_names_inferred 52% | 1,293 |
+|  | sharegpt | 100.0% | - | 1,495 |
+|  | alpaca | 33.0% | tools_dropped 67%, tool_results_as_text 52%, tool_calls_as_text 52% | 875 |
+|  | chatml | 33.0% | tools_dropped 67%, tool_calls_as_text 52% | 1,079 |
+|  | llama3 | 33.0% | tools_dropped 67%, tool_results_as_text 52%, tool_calls_as_text 52% | 1,036 |
+|  | mistral | 33.0% | tools_dropped 67%, tool_results_as_text 52%, tool_calls_as_text 52% | 1,385 |
+| hermes-function-calling-v1, ShareGPT, 1,893 | openai | 42.4% | tool_ids_invented 58% | 1,097 |
+|  | anthropic | 42.4% | tool_ids_invented 58% | 999 |
+|  | gemini | 100.0% | - | 1,587 |
+|  | sharegpt | 100.0% | - | 1,248 |
+|  | alpaca | 3.2% | tools_dropped 97%, tool_calls_as_text 58%, text_joined 32% | 2,047 |
+|  | chatml | 3.2% | tools_dropped 97%, tool_calls_as_text 58%, text_joined 32% | 1,162 |
+|  | llama3 | 3.2% | tools_dropped 97%, text_trimmed 58%, tool_calls_as_text 58% | 2,004 |
+|  | mistral | 0.0% | system_folded 100%, tools_dropped 97%, tool_calls_as_text 58% | 2,321 |
+| toolace-parsed, OpenAI, 2,500 | openai | 17.3% | tool_ids_invented 83%, tool_result_names_dropped 0% | 2,372 |
+|  | anthropic | 17.3% | tool_ids_invented 83%, empty_turns_dropped 0%, tool_result_names_dropped 0% | 2,265 |
+|  | gemini | 100.0% | - | 2,085 |
+|  | sharegpt | 68.2% | tool_result_names_dropped 32%, order_broken 2% | 1,640 |
+|  | alpaca | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_results_as_text 32% | 2,009 |
+|  | chatml | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_result_names_dropped 32% | 2,145 |
+|  | llama3 | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_results_as_text 32% | 2,498 |
+|  | mistral | 10.2% | tools_dropped 90%, tool_calls_as_text 83%, tool_results_as_text 32% | 2,582 |
+| alpaca-cleaned, Alpaca, 51,760 | openai | 100.0% | - | 7,372 |
+|  | anthropic | 100.0% | - | 4,986 |
+|  | gemini | 100.0% | - | 5,547 |
+|  | sharegpt | 63.0% | text_joined 37% | 4,946 |
+|  | alpaca | 100.0% | - | 4,674 |
+|  | chatml | 63.0% | text_joined 37% | 4,650 |
+|  | llama3 | 62.8% | text_joined 37%, text_trimmed 0% | 4,471 |
+|  | mistral | 63.0% | text_joined 37% | 5,417 |
+
+rec/s is read plus write in one process, the best of three passes within one run of the
+script, on one laptop that was busy with other work. Two runs of the script on that laptop
+under different load gave rates two to six times apart (alpaca-cleaned to openai: 11,300 and
+7,372 rec/s; glaive_toolcall_en to openai: 4,184 and 699), so read the rates as rough.
 
 No record of any of the four sets was rejected. `chatconv roundtrip` on every dataset and
 two-way target (24 pairs) reported `mismatch 0`, that is, every read-back matched the reported
 losses; for example
 `chatconv roundtrip ~/data/chatconv/toolace_parsed.jsonl --to anthropic` ends with
-`records 2500  lossless 432  lossy 2068  rejected 0  mismatch 0`.
+`records 2500  lossless 432  lossy 2068  rejected 0  mismatch 0`. For
+hermes-function-calling-v1, `losses` and `roundtrip` also print the read note
+`tagged_calls_unparsed` for 793 of the 1,893 records (see Limitations): those records keep
+their tool calls as assistant text and still count as lossless in the table.
 
-What the numbers say: ShareGPT and OpenAI tool data written for Anthropic needs invented ids
-whenever the source had none (the OpenAI rows here have `tool_calls` without ids). Gemini
-holds the hermes and ToolACE rows without loss because its call ids are optional, but needs a
-tool name on every result, which the glaive observations lack. The text formats
-and Alpaca lose every tool declaration; and Alpaca records with a non-empty `input` (37 %)
-lose the instruction/input boundary in every format with one string per turn.
+What the numbers say: tool data written for OpenAI or Anthropic needs invented ids whenever
+the source had none, which covers every hermes call and the ToolACE `tool_calls`, written
+without ids (83 % of ToolACE records). Gemini holds the hermes and ToolACE rows without loss
+because its call ids are optional, but needs a tool name on every result, which the glaive
+observations lack. In ShareGPT output, 41 of the 2,500 ToolACE records (2 %) break the strict
+entry order. The text formats and Alpaca lose every tool declaration; the Llama 3 template
+strips surrounding whitespace in 58 % of hermes records; and Alpaca records with a non-empty
+`input` (37 %) lose the instruction/input boundary in every format with one string per turn.
 
 Data sources and the licence stated on each dataset card:
 
@@ -271,7 +282,8 @@ Data sources and the licence stated on each dataset card:
   Llama 3.1 tool roles and newer Mistral tool tokens are not rendered.
 - Tool declarations are kept as name, description and JSON schema; schema dialects (for
   example Gemini's `parametersJsonSchema`) are not translated.
-- The speeds are from one machine and one run; they are not a comparison with other tools.
+- The speeds come from one busy laptop and varied two- to sixfold between runs; they are not
+  a comparison with other tools.
 
 ## Related tools
 
