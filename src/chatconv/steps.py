@@ -577,3 +577,28 @@ def trim_text(conv: Conversation, policy: Policy) -> list[Loss]:
         if changed:
             losses.append(Loss("text_trimmed", i))
     return losses
+
+
+@step("drop empty turns", "empty_turns_dropped")
+def drop_empty_turns(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets whose messages need at least one content block."""
+    losses: list[Loss] = []
+    kept: list[Turn] = []
+    for i, turn in enumerate(conv.turns):
+        if turn.parts:
+            kept.append(turn)
+        else:
+            losses.append(Loss("empty_turns_dropped", i, turn.role))
+    conv.turns = kept
+    return losses
+
+
+@step("fill tool schemas", "tool_schema_filled")
+def fill_tool_schema(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets that need an argument schema on every tool declaration."""
+    losses: list[Loss] = []
+    for spec in conv.tools:
+        if spec.parameters is None:
+            spec.parameters = {"type": "object"}
+            losses.append(Loss("tool_schema_filled", None, spec.name))
+    return losses

@@ -123,3 +123,17 @@ def test_system_turn_after_start_is_kept():
     conv = Conversation(turns=[Turn("user", [Text("a")]), Turn("system", [Text("be formal")])])
     out, losses = ANTHROPIC.write(conv)
     assert losses == [] and out["messages"][1]["role"] == "system"
+
+
+def test_empty_turns_and_schemaless_tools_are_fitted():
+    from chatconv.model import ToolSpec
+
+    conv = Conversation(
+        turns=[Turn("user", [Text("q")]), Turn("assistant", []), Turn("user", [Text("again")])],
+        tools=[ToolSpec("ping")],
+    )
+    out, losses = ANTHROPIC.write(conv)
+    assert summarize(losses) == {"empty_turns_dropped": 1, "tool_schema_filled": 1}
+    assert [m["content"] for m in out["messages"]] == ["q", "again"]
+    assert out["tools"] == [{"name": "ping", "input_schema": {"type": "object"}}]
+    assert ANTHROPIC.read(out) == ANTHROPIC.fit(conv, losses)

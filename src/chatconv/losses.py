@@ -33,6 +33,7 @@ LOSS_CODES: dict[str, str] = {
     "order_broken": "entries break the strict user / assistant alternation of the layout "
     "(written as they are)",
     "turns_added": "empty turns added where the target needs a fixed order of roles",
+    "empty_turns_dropped": "turns with no content removed (the target needs content)",
     "tool_ids_invented": "tool-call ids created where the source had none",
     "tool_ids_dropped": "tool-call ids removed",
     "tool_result_names_dropped": "tool names on tool results removed",
@@ -44,6 +45,7 @@ LOSS_CODES: dict[str, str] = {
     "tool_results_as_text": "tool results written as text in a user turn",
     "tool_results_dropped": "tool results removed",
     "tools_dropped": "tool declarations removed",
+    "tool_schema_filled": 'tools declared without a schema given {"type": "object"}',
     "extra_dropped": "fields the target format has no place for removed",
 }
 

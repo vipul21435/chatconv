@@ -98,6 +98,8 @@ class Anthropic(Format):
         ),
         S.names,
         S.drop_image_detail,
+        S.drop_empty_turns,
+        S.fill_tool_schema,
         S.wrap_arguments,
         S.assign_tool_ids(allow_legacy=False),
         S.result_names_by_id,
