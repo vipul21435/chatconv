@@ -30,6 +30,8 @@ LOSS_CODES: dict[str, str] = {
     "turn_split": "assistant text and tool calls written as separate turns",
     "parts_reordered": "text moved before the tool calls of the same turn",
     "turns_merged": "consecutive turns with the same role merged",
+    "order_broken": "entries break the strict user / assistant alternation of the layout "
+    "(written as they are)",
     "turns_added": "empty turns added where the target needs a fixed order of roles",
     "tool_ids_invented": "tool-call ids created where the source had none",
     "tool_ids_dropped": "tool-call ids removed",

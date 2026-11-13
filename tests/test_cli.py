@@ -37,10 +37,10 @@ def test_convert_writes_output_rejects_and_losses(tmp_path, capsys):
     assert "unknown speaker" in rejects[0]["error"]
     assert rejects[1]["error"].startswith("invalid JSON")
     logged = [json.loads(line) for line in log.read_text().splitlines()]
-    assert {e["line"] for e in logged} == {5, 6, 7}
+    assert {e["line"] for e in logged} == {3, 5, 6, 7}
     err = capsys.readouterr().err
     assert "line 9: entry 0: unknown speaker 'alien'" in err
-    assert "records 9  converted 7  lossless 4  rejected 2" in err
+    assert "records 9  converted 7  lossless 3  rejected 2" in err
 
 
 def test_convert_clean_input_exits_zero(tmp_path):
@@ -71,7 +71,7 @@ def test_losses_json_summary(capsys):
 def test_losses_per_record_and_text_report(capsys):
     main(["losses", str(FIXTURES / "openai.jsonl"), "--to", "sharegpt", "--per-record"])
     out = capsys.readouterr().out
-    assert "4\tnames_dropped,tool_result_names_dropped,turn_split" in out
+    assert "4\tnames_dropped,order_broken,tool_result_names_dropped,turn_split" in out
     assert "images_dropped" in out
 
 
@@ -88,7 +88,9 @@ def test_roundtrip_lists_lossy_records(capsys):
     code = main(["roundtrip", str(FIXTURES / "openai.jsonl"), "--to", "sharegpt"])
     captured = capsys.readouterr()
     assert code == 0
-    assert "4\tlossy\tnames_dropped,tool_result_names_dropped,turn_split" in captured.out
+    assert (
+        "4\tlossy\tnames_dropped,order_broken,tool_result_names_dropped,turn_split" in captured.out
+    )
     assert "records 4  lossless 1  lossy 3  rejected 0  mismatch 0" in captured.err
 
 

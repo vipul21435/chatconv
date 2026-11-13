@@ -21,7 +21,8 @@ def records(name):
 def test_fixture_round_trips_without_loss(record):
     conv = SHAREGPT.read(record)
     out, losses = SHAREGPT.write(conv)
-    assert losses == []
+    # the third fixture has two observations in a row, which the strict order rule flags
+    assert {loss.code for loss in losses} <= {"order_broken"}
     assert SHAREGPT.read(out) == conv
 
 
@@ -80,6 +81,7 @@ def test_openai_to_sharegpt_reports_each_loss():
         "turn_split": 1,
         "tool_ids_dropped": 2,
         "tool_result_names_dropped": 1,
+        "order_broken": 1,
     }
     assert [e["from"] for e in out["conversations"]] == [
         "human",
@@ -108,7 +110,7 @@ def test_error_flag_and_result_meta():
         ]
     )
     out, losses = SHAREGPT.write(conv)
-    assert summarize(losses) == {"tool_error_flag_dropped": 1}
+    assert summarize(losses) == {"tool_error_flag_dropped": 1, "order_broken": 1}
     assert out["conversations"][1] == {"x_ms": 3, "from": "observation", "value": "boom"}
     assert SHAREGPT.read(out) == SHAREGPT.fit(conv, losses)
 
@@ -198,3 +200,31 @@ def test_read_notes_are_reported(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "1\tread-note\ttagged_calls_unparsed" in captured.out
     assert "read note: tagged_calls_unparsed" in captured.err
+
+
+@pytest.mark.parametrize(
+    "turns, broken_at",
+    [
+        ([Turn("user", [Text("a")]), Turn("user", [Text("b")]), Turn("assistant", [Text("c")])], 1),
+        (
+            [
+                Turn("user", [Text("a")]),
+                Turn("assistant", [ToolCall("f", {}), ToolCall("g", {})]),
+                Turn("tool", [ToolResult([Text("1")]), ToolResult([Text("2")])]),
+            ],
+            2,
+        ),
+        ([Turn("user", [Text("a")]), Turn("assistant", [Text("b"), ToolCall("f", {})])], 2),
+        ([Turn("assistant", [Text("hi")])], 0),
+    ],
+)
+def test_order_rule_breaks_are_reported(turns, broken_at):
+    out, losses = SHAREGPT.write(Conversation(turns=turns))
+    order = [loss for loss in losses if loss.code == "order_broken"]
+    assert [loss.turn for loss in order] == [broken_at]
+    assert SHAREGPT.read(out) == SHAREGPT.fit(Conversation(turns=turns), losses)
+
+
+def test_alternating_conversation_has_no_order_loss():
+    conv = SHAREGPT.read(records("sharegpt.jsonl")[1])
+    assert SHAREGPT.write(conv)[1] == []

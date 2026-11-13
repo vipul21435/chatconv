@@ -22,6 +22,7 @@ import re
 from typing import Any
 
 from .. import steps as S
+from ..losses import Loss, Policy, step
 from ..model import Conversation, Text, ToolCall, ToolResult, ToolSpec, Turn
 from .base import Format, FormatError, expect, extras
 
@@ -121,6 +122,35 @@ def _specs(raw: Any) -> list[ToolSpec]:
     return specs
 
 
+_USER_SIDE = {"human", "observation"}
+
+
+@step("check entry order", "order_broken")
+def _check_order(conv: Conversation, policy: Policy) -> list[Loss]:
+    """Report output that breaks the order the LLaMA-Factory layout expects.
+
+    After the system prompt, ``human`` or ``observation`` entries take the odd positions and
+    ``gpt`` or ``function_call`` the even ones. Nothing is rewritten: the record is written as
+    it is and the first offending turn is reported.
+    """
+    position = 0
+    for i, turn in enumerate(conv.turns):
+        if turn.role == "tool":
+            kinds = ["observation"] * len(turn.parts)
+        elif turn.role == "system":
+            kinds = ["system"]
+        elif turn.role == "user":
+            kinds = ["human"]
+        else:
+            kinds = ["function_call" if any(isinstance(p, ToolCall) for p in turn.parts) else "gpt"]
+        for kind in kinds:
+            user_slot = position % 2 == 0
+            if kind == "system" or (kind in _USER_SIDE) != user_slot:
+                return [Loss("order_broken", i, f"{kind} at entry {position + 1}")]
+            position += 1
+    return []
+
+
 class ShareGPT(Format):
     name = "sharegpt"
     steps = (
@@ -146,6 +176,7 @@ class ShareGPT(Format):
         S.drop_tool_ids,
         S.drop_result_names,
         S.drop_error_flag,
+        _check_order,
     )
 
     def decode(self, record: Any) -> Conversation:
