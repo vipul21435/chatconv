@@ -126,3 +126,35 @@ def test_error_flag_and_result_meta():
 def test_bad_records_raise(record, message):
     with pytest.raises(FormatError, match=message):
         SHAREGPT.read(record)
+
+
+def test_tagged_tool_calls_and_tool_entries():
+    record = {
+        "conversations": [
+            {"from": "human", "value": "Book a court and a coach."},
+            {
+                "from": "gpt",
+                "value": '<tool_call>\n{"name": "book_court", "arguments": {"hour": 9}}\n'
+                '</tool_call>\n<tool_call>\n{"name": "book_coach", "arguments": {}}\n</tool_call>',
+            },
+            {"from": "tool", "value": "<tool_response>court 3</tool_response>"},
+        ],
+        "tools": '[{"type": "function", "function": {"name": "book_court"}}]',
+    }
+    conv = SHAREGPT.read(record)
+    assert conv.turns[1].parts == [ToolCall("book_court", {"hour": 9}), ToolCall("book_coach", {})]
+    assert conv.turns[2].parts == [ToolResult([Text("<tool_response>court 3</tool_response>")])]
+    assert conv.tools[0].name == "book_court"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "<tool_call>{not json}</tool_call>",
+        'Sure. <tool_call>{"name": "f"}</tool_call>',
+        "<tool_call>[1]</tool_call>",
+    ],
+)
+def test_text_that_is_not_only_tagged_calls_stays_text(value):
+    conv = SHAREGPT.read({"conversations": [{"from": "gpt", "value": value}]})
+    assert conv.turns[0].parts == [Text(value)]

@@ -3,7 +3,12 @@
 Speakers are ``system``, ``human`` (or ``user``) and ``gpt`` (or ``assistant``, ``chatgpt``,
 ``bard``, ``bing``, ``model``). The tool variant adds ``function_call`` entries whose value is a
 JSON object ``{"name", "arguments"}`` (or a list of them), ``observation`` entries holding a
-tool's output, and a top-level ``tools`` field with a JSON list of declarations. A top-level
+tool's output, and a top-level ``tools`` field with a JSON list of declarations.
+
+A second tool style is read as well: ``gpt`` values made only of
+``<tool_call>{"name": ..., "arguments": ...}</tool_call>`` blocks are read as calls, and ``tool``
+entries as results (their text is kept as it is, tags included). The writer always uses the
+``function_call`` / ``observation`` style. A top-level
 ``system`` string is read as the system prompt. Values are plain strings, so there is no place
 for images, ids, author names or the tool name of a result.
 """
@@ -11,6 +16,7 @@ for images, ids, author names or the tool name of a result.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .. import steps as S
@@ -22,6 +28,32 @@ _ASSISTANT = {"gpt", "assistant", "chatgpt", "bard", "bing", "model"}
 _RECORD_KEYS = {"conversations", "tools", "system"}
 _ENTRY_KEYS = {"from", "value"}
 _SPEC_KEYS = {"name", "description", "parameters"}
+_TAGGED_CALL = re.compile(r"\s*<tool_call>\s*(.*?)\s*</tool_call>\s*", re.S)
+
+
+def _tagged_calls(value: str) -> list[ToolCall] | None:
+    """Calls from a value made only of ``<tool_call>`` blocks holding JSON, else ``None``.
+
+    This is the tag style of several public function-calling sets in ShareGPT form.
+    """
+    pos, calls = 0, []
+    for m in _TAGGED_CALL.finditer(value):
+        if m.start() != pos:
+            return None
+        pos = m.end()
+        try:
+            item = json.loads(m.group(1))
+        except ValueError:
+            return None
+        if not (isinstance(item, dict) and isinstance(item.get("name"), str)):
+            return None
+        if extras(item, {"name", "arguments"}):
+            return None
+        args = item.get("arguments", {})
+        if not isinstance(args, (dict, str)):
+            return None
+        calls.append(ToolCall(item["name"], args))
+    return calls if calls and pos == len(value) else None
 
 
 def _calls(value: str, where: str) -> list[ToolCall]:
@@ -55,6 +87,8 @@ def _specs(raw: Any) -> list[ToolSpec]:
     expect(isinstance(raw, list), "tools must be a list")
     specs = []
     for item in raw:
+        if isinstance(item, dict) and item.get("type") == "function" and "function" in item:
+            item = item["function"]  # OpenAI-style declarations, as some sets store them
         expect(isinstance(item, dict) and isinstance(item.get("name"), str), "tool without name")
         specs.append(
             ToolSpec(
@@ -114,10 +148,12 @@ class ShareGPT(Format):
             elif speaker in _USER:
                 conv.turns.append(Turn("user", [Text(value)], meta=meta))
             elif speaker in _ASSISTANT:
-                conv.turns.append(Turn("assistant", [Text(value)], meta=meta))
+                tagged = _tagged_calls(value)
+                parts = tagged if tagged is not None else [Text(value)]
+                conv.turns.append(Turn("assistant", list(parts), meta=meta))
             elif speaker == "function_call":
                 conv.turns.append(Turn("assistant", list(_calls(value, where)), meta=meta))
-            elif speaker == "observation":
+            elif speaker in ("observation", "tool"):
                 conv.turns.append(Turn("tool", [ToolResult([Text(value)], meta=meta)]))
             else:
                 raise FormatError(f"{where}: unknown speaker {speaker!r}")
