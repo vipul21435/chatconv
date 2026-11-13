@@ -78,7 +78,8 @@ The source format is detected per record unless `--from` names it. Errors carry 
 line number. `convert` exits with 1 when any record was rejected; `--strict` rejects every
 record that would lose anything. `roundtrip` exits with 1 on a mismatch (see below).
 
-Policies, one flag per lossy choice:
+Policies. Where a target offers a real alternative there is a flag; the other 18 of the 29 loss
+codes have no alternative and are only reported:
 
 | flag | choices (default first) | applies when the target |
 |---|---|---|
@@ -133,8 +134,9 @@ the same check to real records and reports a `mismatch` if it ever fails.
 **Tool-call ids.** Targets that link results by id (OpenAI, Anthropic) get ids invented as
 `call_<n>`, skipping ids already in use; a result without an id is linked to the first
 unanswered call of the latest assistant turn with the same tool name, or any name when the
-result has none. OpenAI's older `function_call` form has no ids and is kept when the
-conversation already uses it. Gemini needs a tool name on every result: a result with neither
+result has none. OpenAI's deprecated `function_call` form has no ids; it is written only for
+calls that were read from that form (a `function_call` field followed by `function` messages),
+never for id-less calls from other sources. Gemini needs a tool name on every result: a result with neither
 id nor name takes the name of the call it answers by position (`tool_result_names_inferred`).
 
 **Formats**, from their public documentation:
@@ -146,9 +148,9 @@ id nor name takes the name of the call it answers by position (`tool_result_name
 | `gemini` | yes | yes | `contents` with `user`/`model` roles; `text`, `inlineData`, `fileData`, `functionCall`, `functionResponse` parts; `systemInstruction`; `tools[].functionDeclarations`. A result's text is written as `{"result": text}`. [4] |
 | `sharegpt` | yes | yes | `conversations` of `from`/`value`; `function_call` and `observation` entries; top-level `system` and `tools` [5]. Also `tool` entries and `gpt` values made only of `<tool_call>` blocks, as in [9]. |
 | `alpaca` | yes | yes | `instruction`, `input`, `output` [6], plus `system` and `history` [5]. |
-| `chatml` | yes | yes | `{"text": "<|im_start|>role\n...<|im_end|>\n..."}` with roles `system`, `user`, `assistant`, `tool`. [7] |
-| `llama3` | no | yes | Llama 3 instruct layout with `<|start_header_id|>`, `<|end_header_id|>`, `<|eot_id|>`. One-way. [8] |
-| `mistral` | no | yes | `<s>[INST] user [/INST]assistant</s>` as rendered by the Mistral-7B-Instruct chat template. One-way. [7] |
+| `chatml` | yes | yes | `{"text": "<|im_start|>role\n...<|im_end|>\n..."}` [10] [7]. ChatML names `system`, `user` and `assistant`; the `tool` role (one block per tool result) is chatconv's own convention. |
+| `llama3` | no | yes | The chat template of Meta-Llama-3-8B-Instruct [11]: `<|begin_of_text|>`, then per message `<|start_header_id|>role<|end_header_id|>\n\n` + the content with surrounding whitespace stripped + `<|eot_id|>` [8]. One-way. |
+| `mistral` | no | yes | The chat template of Mistral-7B-Instruct v0.1 and v0.2 [12]: `<s> [INST] system\n\nuser [/INST] assistant</s> [INST] user [/INST]`. v0.3 and later templates differ and are not rendered. One-way. |
 
 Detection looks at the record's shape: `conversations` of `from`/`value` is ShareGPT,
 `contents` is Gemini, `instruction` with `output` is Alpaca, a `text` holding `<|im_start|>` is
@@ -156,7 +158,7 @@ ChatML. A `messages` list is Anthropic when it shows an Anthropic sign (top-leve
 `tool_use`/`tool_result`/`image` blocks, `input_schema` tools) and no OpenAI sign, and OpenAI
 otherwise; plain user/assistant string messages read the same either way.
 
-Loss codes and their descriptions are listed in `chatconv.losses.LOSS_CODES` (25 codes).
+Loss codes and their descriptions are listed in `chatconv.losses.LOSS_CODES` (29 codes).
 
 ## Results on public data
 
@@ -263,7 +265,7 @@ Data sources and the licence stated on each dataset card:
 1. OpenAI Python library, chat message types (`chat_completion_message_param.py`,
    `chat_completion_assistant_message_param.py`, `chat_completion_tool_message_param.py`):
    https://github.com/openai/openai-python/tree/main/src/openai/types/chat
-2. OpenAI Cookbook, Fine tuning for function calling:
+2. OpenAI Cookbook, Fine tuning with function-calling (marked archived by OpenAI):
    https://developers.openai.com/cookbook/examples/fine_tuning_for_function_calling
 3. Anthropic, Messages API reference: https://platform.claude.com/docs/en/api/messages
 4. Google, Gemini API reference (Content, Part, FunctionCall, FunctionResponse):
@@ -276,6 +278,14 @@ Data sources and the licence stated on each dataset card:
    https://dev.meta.ai/llama/docs/model-cards-and-prompt-formats/meta-llama-3/
 9. NousResearch/hermes-function-calling-v1, a dataset in ShareGPT form with tagged calls:
    https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1
+10. OpenAI, Chat Markup Language (ChatML), no longer maintained:
+    https://github.com/openai/openai-python/blob/release-v0.28.0/chatml.md
+11. `chat_template` in `tokenizer_config.json` of an ungated copy of Meta-Llama-3-8B-Instruct
+    (the original repository needs a login):
+    https://huggingface.co/NousResearch/Meta-Llama-3-8B-Instruct/blob/main/tokenizer_config.json
+12. `chat_template` in `tokenizer_config.json` of Mistral-7B-Instruct v0.1 and v0.2 (identical):
+    https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1/blob/main/tokenizer_config.json,
+    https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2/blob/main/tokenizer_config.json
 
 ## Licence
 

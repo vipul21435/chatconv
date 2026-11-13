@@ -12,7 +12,9 @@ First release.
   Alpaca (with `system` and `history`) and ChatML text.
 - Write-only renderers for the Llama 3 and Mistral instruct layouts.
 - Per-record format detection.
-- Loss accounting with 25 loss codes, an exact replay of the reported losses, and one policy
-  flag per lossy choice (`--system`, `--system-turns`, `--images`, `--tools`, `--extra`).
+- Loss accounting with 29 loss codes, an exact replay of the reported losses, and five policy
+  flags where a target offers a choice (`--system`, `--system-turns`, `--images`, `--tools`,
+  `--extra`). Read notes for content a reader keeps without interpreting it.
+- Malformed records are rejected one at a time with their line number.
 - Commands `convert`, `losses`, `roundtrip` and `detect` over streaming JSONL, with line
   numbers in errors and a side file for rejected records.
