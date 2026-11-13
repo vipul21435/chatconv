@@ -3,7 +3,8 @@
 * ``chatml`` reads and writes ``<|im_start|>{role}\\n{content}<|im_end|>`` blocks with the roles
   ``system``, ``user``, ``assistant`` and ``tool`` (one ``tool`` block per tool result).
 * ``llama3`` writes the Llama 3 instruct layout
-  ``<|begin_of_text|><|start_header_id|>{role}<|end_header_id|>\\n\\n{content}<|eot_id|>``.
+  ``<|begin_of_text|><|start_header_id|>{role}<|end_header_id|>\\n\\n{content}<|eot_id|>``, with
+  each content stripped of surrounding whitespace as the published chat template does.
 * ``mistral`` writes the Mistral instruct layout ``<s>[INST] {user} [/INST]{assistant}</s>``.
 
 The last two are one-way: they render for training or inference and are not read back.
@@ -105,6 +106,7 @@ class Llama3(Format):
         S.images(),
         S.join_system,
         S.join_text("\n"),
+        S.trim_text,
     )
     tokens = ("<|begin_of_text|>", "<|start_header_id|>", "<|end_header_id|>", "<|eot_id|>")
 

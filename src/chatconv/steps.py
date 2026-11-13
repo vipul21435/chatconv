@@ -555,3 +555,22 @@ def join_system(conv: Conversation, policy: Policy) -> list[Loss]:
     n = len(conv.system)
     conv.system = [Text("\n".join(t.text for t in conv.system))]
     return [Loss("text_joined", None, f"system, {n} parts")]
+
+
+@step("trim text", "text_trimmed")
+def trim_text(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For renderers whose template strips each message (Jinja ``trim``, i.e. ``str.strip``)."""
+    losses: list[Loss] = []
+    for text in conv.system:
+        if text.text != text.text.strip():
+            text.text = text.text.strip()
+            losses.append(Loss("text_trimmed", None, "system"))
+    for i, turn in enumerate(conv.turns):
+        changed = False
+        for part in turn.parts:
+            if isinstance(part, Text) and part.text != part.text.strip():
+                part.text = part.text.strip()
+                changed = True
+        if changed:
+            losses.append(Loss("text_trimmed", i))
+    return losses

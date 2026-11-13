@@ -89,3 +89,17 @@ def test_mistral_rendering_folds_system():
     assert out["text"] == "<s>[INST] Be brief.\nHello [/INST]Hi.</s> [INST] Bye [/INST]"
     out, losses = get_format("mistral").write(conv, Policy(system="drop"))
     assert out["text"] == "<s>[INST] Hello [/INST]Hi.</s> [INST] Bye [/INST]"
+
+
+def test_llama3_trims_like_the_chat_template():
+    conv = Conversation(
+        system=[Text(" Be exact.\n")],
+        turns=[Turn("user", [Text("  hi  ")]), Turn("assistant", [Text("hello")])],
+    )
+    out, losses = get_format("llama3").write(conv)
+    assert summarize(losses) == {"text_trimmed": 2}
+    assert out["text"] == (
+        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nBe exact.<|eot_id|>"
+        "<|start_header_id|>user<|end_header_id|>\n\nhi<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n\nhello<|eot_id|>"
+    )
