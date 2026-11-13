@@ -140,5 +140,6 @@ def test_tools_given_as_json_string():
     tools = '[{"type": "function", "function": {"name": "f", "parameters": {"type": "object"}}}]'
     conv = OPENAI.read({"messages": [], "tools": tools})
     assert conv.tools[0].name == "f"
+    assert OPENAI.read({"messages": [], "tools": "null"}).tools == []
     with pytest.raises(FormatError, match="not JSON"):
         OPENAI.read({"messages": [], "tools": "[oops"})

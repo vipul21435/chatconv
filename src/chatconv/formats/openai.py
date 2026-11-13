@@ -102,7 +102,7 @@ class OpenAI(Format):
         tools = record.get("tools") or []
         if isinstance(tools, str):  # some dataset exports store the list as a JSON string
             try:
-                tools = json.loads(tools)
+                tools = json.loads(tools) or []
             except ValueError as exc:
                 raise FormatError("tools field is not JSON") from exc
         expect(isinstance(tools, list), "tools must be a list")
