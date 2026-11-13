@@ -129,7 +129,8 @@ and *L* empty implies `read_F(write_F(c)) == c`. The property tests check both, 
 hypothesis generating canonical conversations (text, images, calls with and without ids,
 results, names, metadata, raw-string arguments) under every policy combination, for every
 two-way format. They also check that each step reports every change it makes and that a
-written record is a fixed point (writing it again loses nothing). `chatconv roundtrip` applies
+written record is a fixed point (writing it again loses nothing; only a flag such as
+`order_broken`, which reports without rewriting, can repeat). `chatconv roundtrip` applies
 the same check to real records and reports a `mismatch` if it ever fails.
 
 **Tool-call ids.** Targets that link results by id (OpenAI, Anthropic) get ids invented as
