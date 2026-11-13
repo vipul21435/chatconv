@@ -141,6 +141,7 @@ class ShareGPT(Format):
             where = f"entry {n}"
             expect(isinstance(entry, dict), f"{where}: not an object")
             speaker, value = entry.get("from"), entry.get("value")
+            expect(isinstance(speaker, str), f"{where}: from must be a string")
             expect(isinstance(value, str), f"{where}: value must be a string")
             meta = extras(entry, _ENTRY_KEYS)
             if speaker == "system":

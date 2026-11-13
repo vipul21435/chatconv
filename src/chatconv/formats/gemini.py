@@ -110,14 +110,20 @@ class Gemini(Format):
         system = record.get("systemInstruction", record.get("system_instruction"))
         if system is not None:
             expect(isinstance(system, dict), "systemInstruction must be an object")
-            for item in system.get("parts") or []:
+            system_parts = system.get("parts") or []
+            expect(isinstance(system_parts, list), "systemInstruction parts must be a list")
+            for item in system_parts:
                 part = _part(item, "systemInstruction")
                 expect(isinstance(part, Text), "systemInstruction holds text only")
                 conv.system.append(part)
-        for tool in record.get("tools") or []:
+        tools = record.get("tools") or []
+        expect(isinstance(tools, list), "tools must be a list")
+        for tool in tools:
             expect(isinstance(tool, dict), "tool must be an object")
             expect(set(tool) <= {"functionDeclarations"}, "unsupported tool kind")
-            for fn in tool.get("functionDeclarations") or []:
+            decls = tool.get("functionDeclarations") or []
+            expect(isinstance(decls, list), "functionDeclarations must be a list")
+            for fn in decls:
                 expect(
                     isinstance(fn, dict) and isinstance(fn.get("name"), str), "tool without name"
                 )
@@ -133,7 +139,9 @@ class Gemini(Format):
             where = f"content {n}"
             expect(isinstance(content, dict), f"{where}: not an object")
             role = content.get("role", "user")
-            parts = [_part(p, where) for p in content.get("parts") or []]
+            raw_parts = content.get("parts") or []
+            expect(isinstance(raw_parts, list), f"{where}: parts must be a list")
+            parts = [_part(p, where) for p in raw_parts]
             meta = extras(content, _CONTENT_KEYS)
             results = [p for p in parts if isinstance(p, ToolResult)]
             rest = [p for p in parts if not isinstance(p, ToolResult)]

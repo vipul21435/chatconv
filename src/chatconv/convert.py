@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
@@ -12,6 +13,25 @@ from .detect import detect
 from .formats import FORMATS, FormatError, get_format
 from .losses import Loss, Policy
 from .model import InvalidConversation
+
+#: Errors a malformed record can raise inside a reader or writer. They reject that record only.
+RECORD_ERRORS = (
+    FormatError,
+    InvalidConversation,
+    TypeError,
+    ValueError,
+    KeyError,
+    AttributeError,
+    IndexError,
+    RecursionError,
+)
+_SURROGATE = re.compile(r"\\[uU][dD][89a-fA-F]")
+
+
+def _error(exc: BaseException) -> str:
+    if isinstance(exc, (FormatError, InvalidConversation)):
+        return str(exc)
+    return f"malformed record ({type(exc).__name__}: {exc})"
 
 
 @dataclass
@@ -53,9 +73,20 @@ def read_jsonl(stream: IO[str]) -> Iterator[tuple[int, Any, str | None]]:
             continue
         text = line.rstrip("\r\n")
         try:
-            yield n, json.loads(text), None
+            record = json.loads(text)
         except json.JSONDecodeError as exc:
             yield n, text, f"invalid JSON: {exc.msg} at column {exc.colno}"
+            continue
+        except RecursionError:
+            yield n, text, "invalid JSON: nested too deeply"
+            continue
+        if _SURROGATE.search(text):
+            try:
+                json.dumps(record, ensure_ascii=False).encode("utf-8")
+            except UnicodeEncodeError:
+                yield n, text, "invalid text: a string holds an unpaired surrogate"
+                continue
+        yield n, record, None
 
 
 def convert_stream(
@@ -73,8 +104,8 @@ def convert_stream(
             continue
         try:
             out, losses, name = convert_record(record, target, source, policy)
-        except (FormatError, InvalidConversation) as exc:
-            yield Converted(n, record=record, error=str(exc))
+        except RECORD_ERRORS as exc:
+            yield Converted(n, record=record, error=_error(exc))
             continue
         if strict and losses:
             codes = ", ".join(sorted({loss.code for loss in losses}))
@@ -165,8 +196,9 @@ def roundtrip_stream(
         if error is not None:
             yield RoundTrip(n, error=error)
             continue
-        name = detect(record) if source == "auto" else source
+        name = None
         try:
+            name = detect(record) if source == "auto" else source
             if name is None or name not in FORMATS:
                 raise FormatError(
                     "format not recognised" if name is None else f"no reader for {name}"
@@ -174,7 +206,7 @@ def roundtrip_stream(
             conv = get_format(name).read(record)
             out, losses = fmt.write(conv, policy)
             back = fmt.read(json.loads(json.dumps(out)))
-        except (FormatError, InvalidConversation) as exc:
-            yield RoundTrip(n, name, error=str(exc))
+        except RECORD_ERRORS as exc:
+            yield RoundTrip(n, name if isinstance(name, str) else None, error=_error(exc))
             continue
         yield RoundTrip(n, name, losses, back == fmt.fit(conv, losses, policy))

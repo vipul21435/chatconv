@@ -21,7 +21,8 @@ def _messages_flavour(record: dict[str, Any]) -> str:
     openai = anthropic = False
     if "system" in record:
         anthropic = True
-    for tool in record.get("tools") or []:
+    tools = record.get("tools")
+    for tool in tools if isinstance(tools, list) else []:
         if isinstance(tool, dict):
             if tool.get("type") == "function" or "function" in tool:
                 openai = True
@@ -30,12 +31,15 @@ def _messages_flavour(record: dict[str, Any]) -> str:
     for msg in record.get("messages") or []:
         if not isinstance(msg, dict):
             continue
-        if msg.get("role") in _OPENAI_ROLES or _OPENAI_KEYS & set(msg):
+        role = msg.get("role")
+        if (isinstance(role, str) and role in _OPENAI_ROLES) or _OPENAI_KEYS & set(msg):
             openai = True
         content = msg.get("content")
         if isinstance(content, list):
             for block in content:
                 kind = block.get("type") if isinstance(block, dict) else None
+                if not isinstance(kind, str):
+                    continue
                 if kind in _OPENAI_PARTS:
                     openai = True
                 elif kind in _ANTHROPIC_BLOCKS:

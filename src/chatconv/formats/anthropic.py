@@ -55,7 +55,7 @@ def _blocks(content: Any, where: str, allowed: set[str]) -> list[Any]:
     for block in content:
         expect(isinstance(block, dict), f"{where}: block must be an object")
         kind = block.get("type")
-        if kind not in allowed:
+        if not isinstance(kind, str) or kind not in allowed:
             raise FormatError(f"{where}: unsupported block {kind!r}")
         if kind == "text":
             expect(isinstance(block.get("text"), str), f"{where}: text block without text")
@@ -111,7 +111,9 @@ class Anthropic(Format):
         system = record.get("system")
         if system is not None:
             conv.system = _blocks(system, "system", {"text"})
-        for spec in record.get("tools") or []:
+        tools = record.get("tools") or []
+        expect(isinstance(tools, list), "tools must be a list")
+        for spec in tools:
             expect(
                 isinstance(spec, dict) and isinstance(spec.get("name"), str), "tool without name"
             )
