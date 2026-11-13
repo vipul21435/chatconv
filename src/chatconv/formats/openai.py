@@ -61,7 +61,7 @@ def _call(item: Any, where: str, legacy: bool) -> ToolCall:
         expect(isinstance(args, str), f"{where}: arguments must be a string")
         arguments = args
     if legacy:
-        return ToolCall(fn["name"], arguments, None, extras(fn, {"name", "arguments"}))
+        return ToolCall(fn["name"], arguments, None, extras(fn, {"name", "arguments"}), legacy=True)
     expect(not extras(fn, {"name", "arguments"}), f"{where}: unknown function field")
     meta = extras(item, {"id", "type", "function"})
     call_id = item.get("id")
@@ -151,7 +151,9 @@ class OpenAI(Format):
             elif role == "function":
                 expect(isinstance(name, str), f"{where}: function message without name")
                 content = _text_parts(msg.get("content"), where, images=False)
-                conv.turns.append(Turn("tool", [ToolResult(content, None, name, meta=meta)]))
+                conv.turns.append(
+                    Turn("tool", [ToolResult(content, None, name, meta=meta, legacy=True)])
+                )
             else:
                 raise FormatError(f"{where}: unknown role {role!r}")
         return conv

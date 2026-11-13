@@ -48,13 +48,16 @@ class ToolCall:
     """A call the assistant makes to a declared tool.
 
     ``arguments`` is a dict when the source gave a JSON object, and the raw string otherwise
-    (unparseable JSON, or JSON that is not an object).
+    (unparseable JSON, or JSON that is not an object). ``legacy`` records that the source wrote
+    the call in OpenAI's deprecated ``function_call`` field; it only steers the OpenAI writer and
+    is not part of equality.
     """
 
     name: str
     arguments: dict[str, Any] | str
     id: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    legacy: bool = field(default=False, compare=False)
 
 
 @dataclass
@@ -62,6 +65,7 @@ class ToolResult:
     """The output of a tool call, linked to the call by ``id`` where the format has ids.
 
     ``content`` is a list of text and image parts; a plain string result is one text part.
+    ``legacy`` records an OpenAI ``function`` role message (see :class:`ToolCall`).
     """
 
     content: list[Text | Image] = field(default_factory=list)
@@ -69,6 +73,7 @@ class ToolResult:
     name: str | None = None
     is_error: bool = False
     meta: dict[str, Any] = field(default_factory=dict)
+    legacy: bool = field(default=False, compare=False)
 
 
 Part = Text | Image | ToolCall | ToolResult

@@ -198,10 +198,11 @@ def assign_tool_ids(allow_legacy: bool) -> Step:
     linked to the first unanswered call of the latest assistant turn with the same tool name
     (or any name when the result has none) and takes that call's id and name.
 
-    With ``allow_legacy`` (OpenAI's older ``function_call`` form) an assistant turn holding a
-    single call without an id keeps it without one when every result in the following tool
-    turn also lacks an id and names that tool; a result without an id but with a name and no
-    call to link to is also kept as it is.
+    With ``allow_legacy`` (OpenAI's deprecated ``function_call`` form) a call that was read from
+    that form keeps it, without an id, when it is the only call of its turn and every result in
+    the following tool turn was read from a ``function`` message naming that tool; such a
+    result with no call to link to also keeps its form. Every other call or result without an
+    id gets one.
     """
 
     @step("assign tool ids", "tool_ids_invented")
@@ -231,6 +232,7 @@ def assign_tool_ids(allow_legacy: bool) -> Step:
                     allow_legacy
                     and len(calls) == 1
                     and calls[0].id is None
+                    and calls[0].legacy
                     and _legacy_results_follow(conv, i, calls[0].name)
                 )
                 n = 0
@@ -256,7 +258,7 @@ def assign_tool_ids(allow_legacy: bool) -> Step:
                         pending.remove(match)
                         part.id, part.name = match.id, match.name
                         n += 1
-                    elif allow_legacy and part.name is not None:
+                    elif allow_legacy and part.name is not None and part.legacy:
                         continue
                     else:
                         part.id = fresh()
@@ -272,7 +274,7 @@ def _legacy_results_follow(conv: Conversation, i: int, name: str) -> bool:
     if i + 1 >= len(conv.turns) or conv.turns[i + 1].role != "tool":
         return True
     results = [p for p in conv.turns[i + 1].parts if isinstance(p, ToolResult)]
-    return all(r.id is None and r.name == name for r in results)
+    return all(r.id is None and r.name == name and r.legacy for r in results)
 
 
 META_LEVELS = frozenset(

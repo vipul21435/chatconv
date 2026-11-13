@@ -132,8 +132,11 @@ def test_tool_message_with_name_but_no_id():
     conv = OPENAI.read(record)
     assert conv.turns[2].parts == [ToolResult([Text("found")], None, "find")]
     out, losses = OPENAI.write(conv)
-    assert losses == []
-    assert out["messages"][1]["function_call"]["name"] == "find"
+    # the source used tool_calls, so the output does too: ids are invented, never function_call
+    assert summarize(losses) == {"tool_ids_invented": 2}
+    assert "function_call" not in out["messages"][1]
+    assert out["messages"][1]["tool_calls"][0]["id"] == "call_0"
+    assert out["messages"][2] == {"role": "tool", "tool_call_id": "call_0", "content": "found"}
 
 
 def test_tools_given_as_json_string():
@@ -143,3 +146,18 @@ def test_tools_given_as_json_string():
     assert OPENAI.read({"messages": [], "tools": "null"}).tools == []
     with pytest.raises(FormatError, match="not JSON"):
         OPENAI.read({"messages": [], "tools": "[oops"})
+
+
+def test_id_less_calls_from_other_formats_get_ids_not_the_legacy_form():
+    sharegpt = get_format("sharegpt")
+    conv = sharegpt.read(
+        {
+            "conversations": [
+                {"from": "human", "value": "x"},
+                {"from": "gpt", "value": '<tool_call>{"name": "f", "arguments": {}}</tool_call>'},
+            ]
+        }
+    )
+    out, losses = OPENAI.write(conv)
+    assert summarize(losses) == {"tool_ids_invented": 1}
+    assert "function_call" not in out["messages"][1]
