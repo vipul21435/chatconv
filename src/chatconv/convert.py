@@ -130,3 +130,51 @@ def _error_kind(message: str) -> str:
     if sep and head.split(" ")[0] in {"message", "entry", "turn"}:
         return tail
     return message.split(" at column ")[0]
+
+
+@dataclass
+class RoundTrip:
+    """The outcome of reading a record, writing it as another format and reading it back."""
+
+    line: int
+    source: str | None = None
+    losses: list[Loss] = field(default_factory=list)
+    exact: bool = True
+    error: str | None = None
+
+    @property
+    def lossless(self) -> bool:
+        return self.error is None and self.exact and not self.losses
+
+
+def roundtrip_stream(
+    lines: Iterable[tuple[int, Any, str | None]],
+    target: str,
+    source: str = "auto",
+    policy: Policy | None = None,
+) -> Iterator[RoundTrip]:
+    """A to canonical to B to canonical, compared with the canonical form after B's losses.
+
+    ``exact`` is false when the read-back conversation differs from what the reported losses
+    predict, which would be a bug in chatconv.
+    """
+    fmt = get_format(target)
+    if fmt.one_way:
+        raise FormatError(f"{target} is write-only; round trips need a format that reads back")
+    for n, record, error in lines:
+        if error is not None:
+            yield RoundTrip(n, error=error)
+            continue
+        name = detect(record) if source == "auto" else source
+        try:
+            if name is None or name not in FORMATS:
+                raise FormatError(
+                    "format not recognised" if name is None else f"no reader for {name}"
+                )
+            conv = get_format(name).read(record)
+            out, losses = fmt.write(conv, policy)
+            back = fmt.read(json.loads(json.dumps(out)))
+        except (FormatError, InvalidConversation) as exc:
+            yield RoundTrip(n, name, error=str(exc))
+            continue
+        yield RoundTrip(n, name, losses, back == fmt.fit(conv, losses, policy))

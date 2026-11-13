@@ -1,4 +1,4 @@
-"""Command-line interface: ``chatconv convert | detect | losses``."""
+"""Command-line interface: ``chatconv convert | losses | roundtrip | detect``."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from contextlib import ExitStack
 from typing import IO
 
 from . import __version__
-from .convert import Report, convert_stream, read_jsonl
+from .convert import Report, convert_stream, read_jsonl, roundtrip_stream
 from .detect import detect
-from .formats import FORMATS
+from .formats import FORMATS, FormatError
 from .losses import LOSS_CODES, Policy
 
 
@@ -42,6 +42,7 @@ def _policy(args: argparse.Namespace) -> Policy:
         images=args.images,
         system_turns=args.system_turns,
         extra=args.extra,
+        tools=args.tools,
     )
 
 
@@ -73,6 +74,12 @@ def _add_conversion_args(p: argparse.ArgumentParser) -> None:
         choices=["user", "drop"],
         default="user",
         help="no later system messages: write them as user turns, or drop",
+    )
+    g.add_argument(
+        "--tools",
+        choices=["text", "drop"],
+        default="text",
+        help="no tool calls: write calls and results as text, or drop them",
     )
     g.add_argument(
         "--extra",
@@ -144,6 +151,36 @@ def cmd_losses(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_roundtrip(args: argparse.Namespace) -> int:
+    counts: Counter[str] = Counter()
+    reasons: Counter[str] = Counter()
+    with ExitStack() as stack:
+        src = _open_in(stack, args.input)
+        for item in roundtrip_stream(read_jsonl(src), args.to, args.source, _policy(args)):
+            if item.error is not None:
+                counts["rejected"] += 1
+                print(f"{item.line}\trejected\t{item.error}")
+            elif not item.exact:
+                counts["mismatch"] += 1
+                print(f"{item.line}\tmismatch\tread-back differs from the reported losses")
+            elif item.losses:
+                counts["lossy"] += 1
+                codes = sorted({loss.code for loss in item.losses})
+                reasons.update(codes)
+                print(f"{item.line}\tlossy\t{','.join(codes)}")
+            else:
+                counts["lossless"] += 1
+    total = sum(counts.values())
+    print(
+        f"records {total}  lossless {counts['lossless']}  lossy {counts['lossy']}  "
+        f"rejected {counts['rejected']}  mismatch {counts['mismatch']}",
+        file=sys.stderr,
+    )
+    for code, n in reasons.most_common():
+        print(f"  {code:<26} {n:>8} records  {LOSS_CODES[code]}", file=sys.stderr)
+    return 1 if counts["mismatch"] else 0
+
+
 def cmd_detect(args: argparse.Namespace) -> int:
     counts: Counter[str] = Counter()
     with ExitStack() as stack:
@@ -180,6 +217,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="print the summary as JSON")
     p.set_defaults(func=cmd_losses)
 
+    p = sub.add_parser(
+        "roundtrip", help="convert and read back; list records that are not lossless and why"
+    )
+    _add_conversion_args(p)
+    p.set_defaults(func=cmd_roundtrip)
+
     p = sub.add_parser("detect", help="detect the format of each record")
     p.add_argument("input", help="JSONL file, or - for standard input")
     p.add_argument("--per-record", action="store_true", help="print line number and format")
@@ -189,7 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except FormatError as exc:
+        print(f"chatconv: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":  # pragma: no cover

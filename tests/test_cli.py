@@ -82,3 +82,29 @@ def test_detect_counts_and_per_record(tmp_path, capsys):
     assert counts == {"openai": "4", "sharegpt": "4", "invalid-json": "1"}
     main(["detect", str(src), "--per-record"])
     assert capsys.readouterr().out.splitlines()[0] == "1\tsharegpt"
+
+
+def test_roundtrip_lists_lossy_records(capsys):
+    code = main(["roundtrip", str(FIXTURES / "openai.jsonl"), "--to", "sharegpt"])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "4\tlossy\tnames_dropped,tool_result_names_dropped,turn_split" in captured.out
+    assert "records 4  lossless 1  lossy 3  rejected 0  mismatch 0" in captured.err
+
+
+def test_roundtrip_reports_rejects_and_refuses_one_way(tmp_path, capsys):
+    src = tmp_path / "x.jsonl"
+    src.write_text('{"text": "plain"}\nnot json\n')
+    main(["roundtrip", str(src), "--to", "openai"])
+    out = capsys.readouterr().out
+    assert "1\trejected\tformat not recognised" in out and "2\trejected\tinvalid JSON" in out
+    assert main(["roundtrip", str(src), "--to", "llama3"]) == 2
+    assert "write-only" in capsys.readouterr().err
+
+
+def test_tools_policy_flag(capsys):
+    main(
+        ["losses", str(FIXTURES / "sharegpt.jsonl"), "--to", "alpaca", "--tools", "drop", "--json"]
+    )
+    summary = json.loads(capsys.readouterr().out)
+    assert "tool_calls_dropped" in summary["records_with_loss"]
