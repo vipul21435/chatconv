@@ -26,7 +26,8 @@ FILES = {
         "NousResearch/hermes-function-calling-v1",
         "func-calling-singleturn.json",
     ),
-    # Alpaca instruction / input / output (CC BY 4.0)
+    # Alpaca instruction / input / output. The card's metadata says cc-by-4.0 but its text says
+    # CC BY-NC 4.0, as does the upstream Stanford Alpaca README: treat it as non-commercial.
     "alpaca_cleaned.jsonl": ("yahma/alpaca-cleaned", "alpaca_data_cleaned.json"),
 }
 

@@ -226,8 +226,10 @@ Data sources and the licence stated on each dataset card:
   Apache-2.0: https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1
 - minpeter/toolace-parsed, first 2,500 rows, Apache-2.0:
   https://huggingface.co/datasets/minpeter/toolace-parsed
-- yahma/alpaca-cleaned, 51,760 records, CC BY 4.0:
-  https://huggingface.co/datasets/yahma/alpaca-cleaned
+- yahma/alpaca-cleaned, 51,760 records: the card's metadata tag says `cc-by-4.0`, but its
+  Licensing Information section says CC BY-NC 4.0, and the upstream Stanford Alpaca README [6]
+  says CC BY NC 4.0 (non-commercial use only). Read it as non-commercial. Only counts derived
+  from it appear here: https://huggingface.co/datasets/yahma/alpaca-cleaned
 
 ## Limitations
 
