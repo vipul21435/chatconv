@@ -158,3 +158,43 @@ def test_tagged_tool_calls_and_tool_entries():
 def test_text_that_is_not_only_tagged_calls_stays_text(value):
     conv = SHAREGPT.read({"conversations": [{"from": "gpt", "value": value}]})
     assert conv.turns[0].parts == [Text(value)]
+
+
+def test_python_literal_tagged_calls_are_parsed():
+    body = "{'arguments': {'q': ['a', \"b's\"], 'n': (1, 2), 'on': True}, 'name': 'find'}"
+    value = f"<tool_call>\n{body}\n</tool_call>"
+    conv = SHAREGPT.read({"conversations": [{"from": "gpt", "value": value}]})
+    assert conv.turns[0].parts == [ToolCall("find", {"q": ["a", "b's"], "n": [1, 2], "on": True})]
+    assert conv.notes == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "<tool_call>{'name': 'f', 'arguments': {1, 2}}</tool_call>",  # a set is not JSON
+        "<tool_call>__import__('os')</tool_call>",
+        "<tool_call>{'name': f}</tool_call>",
+    ],
+)
+def test_unparseable_tagged_calls_stay_text_with_a_read_note(value):
+    conv = SHAREGPT.read({"conversations": [{"from": "gpt", "value": value}]})
+    assert conv.turns[0].parts == [Text(value)]
+    assert conv.notes == ["tagged_calls_unparsed"]
+
+
+def test_read_notes_are_reported(tmp_path, capsys):
+    from chatconv.cli import main
+
+    src = tmp_path / "n.jsonl"
+    src.write_text(
+        json.dumps(
+            {"conversations": [{"from": "gpt", "value": "<tool_call>{'name': f}</tool_call>"}]}
+        )
+        + "\n"
+    )
+    main(["losses", str(src), "--to", "openai", "--json"])
+    assert json.loads(capsys.readouterr().out)["read_notes"] == {"tagged_calls_unparsed": 1}
+    main(["roundtrip", str(src), "--to", "sharegpt"])
+    captured = capsys.readouterr()
+    assert "1\tread-note\ttagged_calls_unparsed" in captured.out
+    assert "read note: tagged_calls_unparsed" in captured.err

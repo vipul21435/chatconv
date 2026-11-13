@@ -16,6 +16,7 @@ from .convert import Report, convert_stream, read_jsonl, roundtrip_stream
 from .detect import detect
 from .formats import FORMATS, FormatError
 from .losses import LOSS_CODES, Policy
+from .model import READ_NOTES
 
 
 def _open_in(stack: ExitStack, path: str) -> IO[str]:
@@ -103,6 +104,11 @@ def _print_report(report: Report, seconds: float, out: IO[str]) -> None:
     for code, n in report.records_with.most_common():
         share = n / report.records if report.records else 0.0
         print(f"  {code:<26} {n:>8} records ({share:6.1%})  {LOSS_CODES[code]}", file=out)
+    for code, n in report.notes.most_common():
+        share = n / report.records if report.records else 0.0
+        print(
+            f"  read note: {code:<15} {n:>8} records ({share:6.1%})  {READ_NOTES[code]}", file=out
+        )
     for message, n in report.errors.most_common(10):
         print(f"  rejected: {message} ({n})", file=out)
 
@@ -154,9 +160,13 @@ def cmd_losses(args: argparse.Namespace) -> int:
 def cmd_roundtrip(args: argparse.Namespace) -> int:
     counts: Counter[str] = Counter()
     reasons: Counter[str] = Counter()
+    notes: Counter[str] = Counter()
     with ExitStack() as stack:
         src = _open_in(stack, args.input)
         for item in roundtrip_stream(read_jsonl(src), args.to, args.source, _policy(args)):
+            if item.notes:
+                notes.update(set(item.notes))
+                print(f"{item.line}\tread-note\t{','.join(sorted(set(item.notes)))}")
             if item.error is not None:
                 counts["rejected"] += 1
                 print(f"{item.line}\trejected\t{item.error}")
@@ -178,6 +188,8 @@ def cmd_roundtrip(args: argparse.Namespace) -> int:
     )
     for code, n in reasons.most_common():
         print(f"  {code:<26} {n:>8} records  {LOSS_CODES[code]}", file=sys.stderr)
+    for code, n in notes.most_common():
+        print(f"  read note: {code:<15} {n:>8} records  {READ_NOTES[code]}", file=sys.stderr)
     return 1 if counts["mismatch"] else 0
 
 

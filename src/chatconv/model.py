@@ -25,6 +25,13 @@ from typing import Any
 
 ROLES = ("system", "user", "assistant", "tool")
 
+#: Things a reader keeps as they are because it cannot interpret them. They are reported by
+#: ``losses``, ``convert`` and ``roundtrip`` beside the conversion losses.
+READ_NOTES = {
+    "tagged_calls_unparsed": "a value holds <tool_call> blocks that are neither JSON nor Python "
+    "literals; kept as text",
+}
+
 
 @dataclass
 class Text:
@@ -111,6 +118,8 @@ class Conversation:
     system: list[Text] = field(default_factory=list)
     tools: list[ToolSpec] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list, compare=False)
+    """Codes from ``READ_NOTES`` for things a reader kept but could not interpret."""
 
     def copy(self) -> Conversation:
         return copy.deepcopy(self)

@@ -43,6 +43,7 @@ class Converted:
     record: Any = None
     losses: list[Loss] = field(default_factory=list)
     error: str | None = None
+    notes: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -56,6 +57,13 @@ def convert_record(
 
     Raises :class:`FormatError` when the record cannot be read.
     """
+    out, losses, name, _ = _convert(record, target, source, policy)
+    return out, losses, name
+
+
+def _convert(
+    record: Any, target: str, source: str, policy: Policy | None
+) -> tuple[Any, list[Loss], str, list[str]]:
     name = detect(record) if source == "auto" else source
     if name is None:
         raise FormatError("format not recognised")
@@ -63,7 +71,7 @@ def convert_record(
         raise FormatError(f"detected {name}, which has no reader yet")
     conv = get_format(name).read(record)
     out, losses = get_format(target).write(conv, policy)
-    return out, losses, name
+    return out, losses, name, list(conv.notes)
 
 
 def read_jsonl(stream: IO[str]) -> Iterator[tuple[int, Any, str | None]]:
@@ -103,15 +111,15 @@ def convert_stream(
             yield Converted(n, record=record, error=error)
             continue
         try:
-            out, losses, name = convert_record(record, target, source, policy)
+            out, losses, name, notes = _convert(record, target, source, policy)
         except RECORD_ERRORS as exc:
             yield Converted(n, record=record, error=_error(exc))
             continue
         if strict and losses:
             codes = ", ".join(sorted({loss.code for loss in losses}))
-            yield Converted(n, name, record, losses, f"strict: lossy ({codes})")
+            yield Converted(n, name, record, losses, f"strict: lossy ({codes})", notes)
             continue
-        yield Converted(n, name, out, losses)
+        yield Converted(n, name, out, losses, None, notes)
 
 
 @dataclass
@@ -126,9 +134,11 @@ class Report:
     losses: Counter[str] = field(default_factory=Counter)
     records_with: Counter[str] = field(default_factory=Counter)
     errors: Counter[str] = field(default_factory=Counter)
+    notes: Counter[str] = field(default_factory=Counter)
 
     def add(self, item: Converted) -> None:
         self.records += 1
+        self.notes.update(set(item.notes))
         if item.source:
             self.sources[item.source] += 1
         codes = {loss.code for loss in item.losses}
@@ -152,6 +162,7 @@ class Report:
             "losses": dict(self.losses.most_common()),
             "records_with_loss": dict(self.records_with.most_common()),
             "errors": dict(self.errors.most_common()),
+            "read_notes": dict(self.notes.most_common()),
         }
 
 
@@ -172,6 +183,7 @@ class RoundTrip:
     losses: list[Loss] = field(default_factory=list)
     exact: bool = True
     error: str | None = None
+    notes: list[str] = field(default_factory=list)
 
     @property
     def lossless(self) -> bool:
@@ -209,4 +221,6 @@ def roundtrip_stream(
         except RECORD_ERRORS as exc:
             yield RoundTrip(n, name if isinstance(name, str) else None, error=_error(exc))
             continue
-        yield RoundTrip(n, name, losses, back == fmt.fit(conv, losses, policy))
+        yield RoundTrip(
+            n, name, losses, back == fmt.fit(conv, losses, policy), None, list(conv.notes)
+        )

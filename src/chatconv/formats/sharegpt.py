@@ -6,7 +6,8 @@ JSON object ``{"name", "arguments"}`` (or a list of them), ``observation`` entri
 tool's output, and a top-level ``tools`` field with a JSON list of declarations.
 
 A second tool style is read as well: ``gpt`` values made only of
-``<tool_call>{"name": ..., "arguments": ...}</tool_call>`` blocks are read as calls, and ``tool``
+``<tool_call>{"name": ..., "arguments": ...}</tool_call>`` blocks (JSON, or a Python literal
+dict) are read as calls, and ``tool``
 entries as results (their text is kept as it is, tags included). The writer always uses the
 ``function_call`` / ``observation`` style. A top-level
 ``system`` string is read as the system prompt. Values are plain strings, so there is no place
@@ -15,6 +16,7 @@ for images, ids, author names or the tool name of a result.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from typing import Any
@@ -31,6 +33,25 @@ _SPEC_KEYS = {"name", "description", "parameters"}
 _TAGGED_CALL = re.compile(r"\s*<tool_call>\s*(.*?)\s*</tool_call>\s*", re.S)
 
 
+def _literal(body: str) -> Any:
+    """Parse a call body as JSON, else as a Python literal (``ast.literal_eval``, never ``eval``).
+
+    Some public sets write the body as a Python dict with single quotes. A literal is accepted
+    only when it maps onto JSON (tuples become lists; sets, bytes and the like are refused).
+    """
+    try:
+        return json.loads(body)
+    except ValueError:
+        pass
+    if len(body) > 100_000:
+        return None
+    try:
+        value = ast.literal_eval(body)
+        return json.loads(json.dumps(value))
+    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+        return None
+
+
 def _tagged_calls(value: str) -> list[ToolCall] | None:
     """Calls from a value made only of ``<tool_call>`` blocks holding JSON, else ``None``.
 
@@ -41,9 +62,8 @@ def _tagged_calls(value: str) -> list[ToolCall] | None:
         if m.start() != pos:
             return None
         pos = m.end()
-        try:
-            item = json.loads(m.group(1))
-        except ValueError:
+        item = _literal(m.group(1))
+        if item is None:
             return None
         if not (isinstance(item, dict) and isinstance(item.get("name"), str)):
             return None
@@ -151,6 +171,8 @@ class ShareGPT(Format):
             elif speaker in _ASSISTANT:
                 tagged = _tagged_calls(value)
                 parts = tagged if tagged is not None else [Text(value)]
+                if tagged is None and "<tool_call>" in value:
+                    conv.notes.append("tagged_calls_unparsed")
                 conv.turns.append(Turn("assistant", list(parts), meta=meta))
             elif speaker == "function_call":
                 conv.turns.append(Turn("assistant", list(_calls(value, where)), meta=meta))
