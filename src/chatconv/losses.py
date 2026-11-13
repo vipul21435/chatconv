@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
-from .model import Conversation
+from .model import Conversation, canonicalize
 
 #: Every loss code with a one-line description. Writers only emit codes listed here.
 LOSS_CODES: dict[str, str] = {
@@ -129,12 +129,16 @@ def step(name: str, *codes: str) -> Callable[[StepFn], Step]:
 def run_steps(
     conv: Conversation, steps: Sequence[Step], policy: Policy
 ) -> tuple[Conversation, list[Loss]]:
-    """Run ``steps`` on a copy of ``conv``; return the rewritten copy and every loss."""
+    """Run ``steps`` on a copy of ``conv``; return the rewritten copy and every loss.
+
+    The copy is put back into canonical form at the end (a step that drops the metadata of a
+    leading system turn, for example, leaves a plain system prompt).
+    """
     out = conv.copy()
     losses: list[Loss] = []
     for s in steps:
         losses.extend(s(out, policy))
-    return out, losses
+    return canonicalize(out), losses
 
 
 def apply_losses(
