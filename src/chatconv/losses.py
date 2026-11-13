@@ -27,6 +27,7 @@ LOSS_CODES: dict[str, str] = {
     "names_dropped": "author names on turns removed",
     "text_joined": "several text parts of one turn joined into one string",
     "turn_split": "assistant text and tool calls written as separate turns",
+    "parts_reordered": "text moved before the tool calls of the same turn",
     "turns_merged": "consecutive turns with the same role merged",
     "tool_ids_invented": "tool-call ids created where the source had none",
     "tool_ids_dropped": "tool-call ids removed",

@@ -130,6 +130,8 @@ def validate(conv: Conversation) -> None:
             raise InvalidConversation(f"turn {i}: adjacent tool turns")
         if turn.role == "tool" and not turn.parts:
             raise InvalidConversation(f"turn {i}: empty tool turn")
+        if turn.role == "tool" and turn.name is not None:
+            raise InvalidConversation(f"turn {i}: tool turns carry names on their results")
         for part in turn.parts:
             if isinstance(part, Text):
                 if not part.text:
@@ -191,9 +193,7 @@ def canonicalize(conv: Conversation) -> Conversation:
         turn.parts = [p for p in turn.parts if not (isinstance(p, Text) and not p.text)]
         for part in turn.parts:
             if isinstance(part, ToolResult):
-                part.content = [
-                    p for p in part.content if not (isinstance(p, Text) and not p.text)
-                ]
+                part.content = [p for p in part.content if not (isinstance(p, Text) and not p.text)]
             elif isinstance(part, ToolCall) and isinstance(part.arguments, str):
                 part.arguments = parse_arguments(part.arguments)
         if leading and _is_plain_system(turn):

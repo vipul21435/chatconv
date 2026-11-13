@@ -1,0 +1,366 @@
+"""Rewrites shared by the writers. Each returns one loss per change and changes nothing else."""
+
+from __future__ import annotations
+
+from itertools import count
+
+from .losses import Loss, Policy, Step, step
+from .model import Conversation, Image, Text, ToolCall, ToolResult, Turn, tool_call_names
+
+
+@step("system turns", "system_turns_dropped", "system_turns_as_user")
+def system_turns(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no system messages after the start."""
+    losses: list[Loss] = []
+    kept: list[Turn] = []
+    for i, turn in enumerate(conv.turns):
+        if turn.role != "system":
+            kept.append(turn)
+        elif policy.system_turns == "drop":
+            losses.append(Loss("system_turns_dropped", i))
+        else:
+            turn.role = "user"
+            losses.append(Loss("system_turns_as_user", i))
+            kept.append(turn)
+    conv.turns = kept
+    return losses
+
+
+def images(in_turns: bool = True, in_results: bool = True) -> Step:
+    """For targets with no image parts in turns, in tool results, or both."""
+
+    @step("images", "images_dropped", "images_as_placeholder")
+    def run(conv: Conversation, policy: Policy) -> list[Loss]:
+        losses: list[Loss] = []
+        code = "images_dropped" if policy.images == "drop" else "images_as_placeholder"
+
+        def rewrite(parts: list) -> tuple[list, int]:
+            out, n = [], 0
+            for p in parts:
+                if isinstance(p, Image):
+                    n += 1
+                    if policy.images == "placeholder":
+                        out.append(Text(policy.image_placeholder))
+                else:
+                    out.append(p)
+            return out, n
+
+        for i, turn in enumerate(conv.turns):
+            n = 0
+            if in_turns:
+                turn.parts, n = rewrite(turn.parts)
+            if in_results:
+                for part in turn.parts:
+                    if isinstance(part, ToolResult):
+                        part.content, m = rewrite(part.content)
+                        n += m
+            if n:
+                losses.append(Loss(code, i, f"{n} image(s)"))
+        return losses
+
+    return run
+
+
+@step("names", "names_dropped")
+def names(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no author name on a turn."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        if turn.name is not None:
+            losses.append(Loss("names_dropped", i, turn.name))
+            turn.name = None
+    return losses
+
+
+@step("split assistant turns", "turn_split")
+def split_assistant(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets that hold either text or tool calls in one assistant turn, not both.
+
+    The text goes first, then the calls; turn metadata stays on the text turn.
+    """
+    losses: list[Loss] = []
+    turns: list[Turn] = []
+    for i, turn in enumerate(conv.turns):
+        calls = [p for p in turn.parts if isinstance(p, ToolCall)]
+        rest = [p for p in turn.parts if not isinstance(p, ToolCall)]
+        if turn.role == "assistant" and calls and rest:
+            turns.append(Turn("assistant", rest, turn.name, turn.meta))
+            turns.append(Turn("assistant", calls, turn.name))
+            losses.append(Loss("turn_split", i))
+        else:
+            turns.append(turn)
+    conv.turns = turns
+    return losses
+
+
+def _join(parts: list, sep: str) -> tuple[list, bool]:
+    """Join all text parts into one; report whether anything changed."""
+    texts = [p for p in parts if isinstance(p, Text)]
+    if len(texts) <= 1:
+        return parts, False
+    joined = Text(sep.join(t.text for t in texts)) if texts else None
+    out = [p for p in parts if not isinstance(p, Text)]
+    if joined is not None and joined.text:
+        out.insert(0, joined)
+    return out, True
+
+
+def join_text(sep: str = "\n") -> Step:
+    """For targets whose message content is one string.
+
+    Run it after the metadata step: the joined part carries no metadata.
+    """
+
+    @step("join text", "text_joined")
+    def run(conv: Conversation, policy: Policy) -> list[Loss]:
+        losses: list[Loss] = []
+        for i, turn in enumerate(conv.turns):
+            if turn.role == "tool":
+                for part in turn.parts:
+                    if isinstance(part, ToolResult):
+                        part.content, changed = _join(part.content, sep)
+                        if changed:
+                            losses.append(Loss("text_joined", i, "tool result"))
+                continue
+            turn.parts, changed = _join(turn.parts, sep)
+            if changed:
+                losses.append(Loss("text_joined", i))
+        return losses
+
+    return run
+
+
+@step("drop tool ids", "tool_ids_dropped")
+def drop_tool_ids(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets that do not link results to calls by id."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        n = 0
+        for part in turn.parts:
+            if isinstance(part, (ToolCall, ToolResult)) and part.id is not None:
+                part.id = None
+                n += 1
+        if n:
+            losses.append(Loss("tool_ids_dropped", i, f"{n} id(s)"))
+    return losses
+
+
+@step("drop tool result names", "tool_result_names_dropped")
+def drop_result_names(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets whose tool results carry no tool name."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        for part in turn.parts:
+            if isinstance(part, ToolResult) and part.name is not None:
+                losses.append(Loss("tool_result_names_dropped", i, part.name))
+                part.name = None
+    return losses
+
+
+@step("result names follow ids", "tool_result_names_dropped")
+def result_names_by_id(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets that know a result's tool only through the id of its call.
+
+    A result with an id gets the name of the call with that id (or no name when no call has
+    that id); a different name it carried is lost.
+    """
+    names_by_id = tool_call_names(conv)
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        for part in turn.parts:
+            if isinstance(part, ToolResult) and part.id is not None:
+                resolved = names_by_id.get(part.id)
+                if part.name != resolved:
+                    losses.append(Loss("tool_result_names_dropped", i, str(part.name)))
+                    part.name = resolved
+    return losses
+
+
+@step("drop tool error flag", "tool_error_flag_dropped")
+def drop_error_flag(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no way to mark a tool result as an error."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        for part in turn.parts:
+            if isinstance(part, ToolResult) and part.is_error:
+                part.is_error = False
+                losses.append(Loss("tool_error_flag_dropped", i))
+    return losses
+
+
+def assign_tool_ids(allow_legacy: bool) -> Step:
+    """For targets that need an id on every call and result.
+
+    Ids are invented as ``call_<n>``, skipping ids already in use. A result without an id is
+    linked to the first unanswered call of the latest assistant turn with the same tool name
+    (or any name when the result has none) and takes that call's id and name.
+
+    With ``allow_legacy`` (OpenAI's older ``function_call`` form) an assistant turn holding a
+    single call without an id keeps it without one when every result in the following tool
+    turn also lacks an id and names that tool; a result without an id but with a name and no
+    call to link to is also kept as it is.
+    """
+
+    @step("assign tool ids", "tool_ids_invented")
+    def run(conv: Conversation, policy: Policy) -> list[Loss]:
+        used = set(tool_call_names(conv))
+        for turn in conv.turns:
+            for part in turn.parts:
+                if isinstance(part, ToolResult) and part.id is not None:
+                    used.add(part.id)
+        counter = count()
+
+        def fresh() -> str:
+            while True:
+                candidate = f"call_{next(counter)}"
+                if candidate not in used:
+                    used.add(candidate)
+                    return candidate
+
+        losses: list[Loss] = []
+        pending: list[ToolCall] = []
+        for i, turn in enumerate(conv.turns):
+            if turn.role == "assistant":
+                calls = [p for p in turn.parts if isinstance(p, ToolCall)]
+                if not calls:
+                    continue
+                legacy = (
+                    allow_legacy
+                    and len(calls) == 1
+                    and calls[0].id is None
+                    and _legacy_results_follow(conv, i, calls[0].name)
+                )
+                n = 0
+                for call in calls:
+                    if call.id is None and not legacy:
+                        call.id = fresh()
+                        n += 1
+                if n:
+                    losses.append(Loss("tool_ids_invented", i, f"{n} call id(s)"))
+                pending = [] if legacy else list(calls)
+            elif turn.role == "tool":
+                n = 0
+                for part in turn.parts:
+                    if not isinstance(part, ToolResult):
+                        continue
+                    if part.id is not None:
+                        pending = [c for c in pending if c.id != part.id]
+                        continue
+                    match = next(
+                        (c for c in pending if part.name is None or c.name == part.name), None
+                    )
+                    if match is not None:
+                        pending.remove(match)
+                        part.id, part.name = match.id, match.name
+                        n += 1
+                    elif allow_legacy and part.name is not None:
+                        continue
+                    else:
+                        part.id = fresh()
+                        n += 1
+                if n:
+                    losses.append(Loss("tool_ids_invented", i, f"{n} result id(s)"))
+        return losses
+
+    return run
+
+
+def _legacy_results_follow(conv: Conversation, i: int, name: str) -> bool:
+    if i + 1 >= len(conv.turns) or conv.turns[i + 1].role != "tool":
+        return True
+    results = [p for p in conv.turns[i + 1].parts if isinstance(p, ToolResult)]
+    return all(r.id is None and r.name == name for r in results)
+
+
+META_LEVELS = frozenset(
+    {
+        "conv",
+        "tool_spec",
+        "system_text",
+        "turn",
+        "tool_turn",
+        "text",
+        "image",
+        "tool_call",
+        "tool_result",
+        "result_text",
+        "result_image",
+    }
+)
+
+
+def _level(part: object, inside_result: bool) -> str:
+    if isinstance(part, Text):
+        return "result_text" if inside_result else "text"
+    if isinstance(part, Image):
+        return "result_image" if inside_result else "image"
+    return "tool_call" if isinstance(part, ToolCall) else "tool_result"
+
+
+def _filter(
+    meta: dict, level: str, drop: frozenset[str], reserved: dict[str, set[str]]
+) -> tuple[dict, list[str]]:
+    """Return the metadata a target keeps at ``level`` and the keys it loses."""
+    if not meta:
+        return meta, []
+    if level in drop:
+        return {}, sorted(meta)
+    clash = reserved.get(level, set()) & set(meta)
+    if not clash:
+        return meta, []
+    return {k: v for k, v in meta.items() if k not in clash}, sorted(clash)
+
+
+def drop_meta(*lost: str, reserved: dict[str, set[str]] | None = None) -> Step:
+    """Drop metadata a target cannot hold.
+
+    ``lost`` names whole levels (from ``META_LEVELS``) the target has no place for;
+    ``reserved`` maps a level to keys the target's own fields use, which an unknown field of
+    the same name cannot keep. ``policy.extra == "drop"`` drops every level.
+    """
+    reserved = reserved or {}
+    unknown = (set(lost) | set(reserved)) - META_LEVELS
+    if unknown:
+        raise ValueError(f"unknown metadata levels {sorted(unknown)}")
+
+    @step("drop extra fields", "extra_dropped")
+    def run(conv: Conversation, policy: Policy) -> list[Loss]:
+        drop = META_LEVELS if policy.extra == "drop" else frozenset(lost)
+        losses: list[Loss] = []
+
+        def fix(obj, level: str, turn: int | None) -> None:
+            obj.meta, keys = _filter(obj.meta, level, drop, reserved)
+            if keys:
+                losses.append(Loss("extra_dropped", turn, f"{level}: {', '.join(keys)}"))
+
+        fix(conv, "conv", None)
+        for spec in conv.tools:
+            fix(spec, "tool_spec", None)
+        for text in conv.system:
+            fix(text, "system_text", None)
+        for i, turn in enumerate(conv.turns):
+            fix(turn, "tool_turn" if turn.role == "tool" else "turn", i)
+            for part in turn.parts:
+                fix(part, _level(part, False), i)
+                if isinstance(part, ToolResult):
+                    for sub in part.content:
+                        fix(sub, _level(sub, True), i)
+        return losses
+
+    return run
+
+
+@step("text before tool calls", "parts_reordered")
+def text_before_calls(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets that write an assistant message's text and its tool calls in separate fields."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        if turn.role != "assistant":
+            continue
+        ordered = [p for p in turn.parts if not isinstance(p, ToolCall)] + [
+            p for p in turn.parts if isinstance(p, ToolCall)
+        ]
+        if ordered != turn.parts:
+            turn.parts = ordered
+            losses.append(Loss("parts_reordered", i))
+    return losses
