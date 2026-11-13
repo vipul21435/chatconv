@@ -67,5 +67,3 @@ def test_alpaca_adds_turns_for_order():
     out, losses = get_format("alpaca").write(conv)
     assert summarize(losses) == {"turns_added": 2}
     assert out == {"instruction": "hi", "input": "", "output": "", "history": [["", "hello"]]}
-
-

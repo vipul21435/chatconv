@@ -1,0 +1,2 @@
+{"text": "<|im_start|>system\nYou count syllables.<|im_end|>\n<|im_start|>user\nHow many syllables in banana?<|im_end|>\n<|im_start|>assistant\nThree.<|im_end|>\n"}
+{"text": "<|im_start|>user\nWhat time is it in Lagos?<|im_end|>\n<|im_start|>assistant\n{\"name\": \"clock\", \"arguments\": {\"city\": \"Lagos\"}}<|im_end|>\n<|im_start|>tool\n16:20<|im_end|>\n<|im_start|>assistant\nIt is 16:20.<|im_end|>\n", "lang": "en"}

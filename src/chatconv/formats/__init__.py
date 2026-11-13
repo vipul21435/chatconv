@@ -8,6 +8,7 @@ from .base import Format, FormatError
 from .gemini import Gemini
 from .openai import OpenAI
 from .sharegpt import ShareGPT
+from .text import ChatML, Llama3, Mistral
 
 FORMATS: dict[str, Format] = {
     f.name: f
@@ -17,6 +18,9 @@ FORMATS: dict[str, Format] = {
         Gemini(),
         ShareGPT(),
         Alpaca(),
+        ChatML(),
+        Llama3(),
+        Mistral(),
     )
 }
 
