@@ -106,7 +106,7 @@ def _join(parts: list, sep: str) -> tuple[list, bool]:
     return out, True
 
 
-def join_text(sep: str = "\n") -> Step:
+def join_text(sep: str = "\n", in_turns: bool = True) -> Step:
     """For targets whose message content is one string.
 
     Run it after the metadata step: the joined part carries no metadata.
@@ -122,6 +122,8 @@ def join_text(sep: str = "\n") -> Step:
                         part.content, changed = _join(part.content, sep)
                         if changed:
                             losses.append(Loss("text_joined", i, "tool result"))
+                continue
+            if not in_turns:
                 continue
             turn.parts, changed = _join(turn.parts, sep)
             if changed:
@@ -522,18 +524,14 @@ def infer_result_names(conv: Conversation, policy: Policy) -> list[Loss]:
         for part in turn.parts:
             if not isinstance(part, ToolResult):
                 continue
-            match = next(
-                (
-                    c
-                    for c in pending
-                    if (part.id is not None and c.id == part.id)
-                    or (part.id is None and part.name is not None and c.name == part.name)
-                ),
-                None,
-            )
+            if part.id is not None:
+                match = next((c for c in pending if c.id == part.id), None)
+            elif part.name is not None:
+                match = next((c for c in pending if c.name == part.name), None)
+            else:
+                match = pending[0] if pending else None
             if part.name is None:
-                match = match or (pending[0] if pending else None)
-                part.name = match.name if match else "unknown"
+                part.name = match.name if match is not None else "unknown"
                 losses.append(Loss("tool_result_names_inferred", i, part.name))
             pending = [c for c in pending if c is not match]
     return losses
