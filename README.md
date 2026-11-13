@@ -163,9 +163,10 @@ Loss codes and their descriptions are listed in `chatconv.losses.LOSS_CODES` (29
 ## Results on public data
 
 Four public datasets in three source formats, each converted to every format. "lossless" is
-the share of records converted with no loss at all; "most common losses" gives the share of
-records each loss reason touches; rec/s is read plus write in one process on one laptop
-(best of three passes). No dataset rows are committed.
+the share of records converted with no reported loss, which means the conversation read back
+from the output equals, in canonical form, the one read from the source; the output record can
+still differ from the input in form (see Limitations). "most common losses" gives the share of
+records each loss reason touches. No dataset rows are committed.
 
 ```
 python scripts/fetch_data.py ~/data/chatconv      # about 70 MB
@@ -239,7 +240,13 @@ Data sources and the licence stated on each dataset card:
   `refusal`, audio and file parts; Anthropic `document`, `thinking`, search-result and server
   tool blocks, and file image sources; Gemini non-image `inlineData` and tools other than
   function declarations.
-- OpenAI's `developer` role is read as `system`, so it comes back as `system`.
+- "Lossless" compares canonical forms, not bytes. These read-side rewrites count as lossless,
+  so even a same-format conversion with no losses can change a record: tool-call arguments
+  are re-serialised from parsed JSON (`{"a": 1.0, "b":1e3}` becomes `{"a": 1.0, "b": 1000.0}`);
+  string content can become a list of parts or the reverse; keys whose value is `null` are not
+  written back; OpenAI's `developer` role comes back as `system`; ShareGPT `user`/`assistant`
+  speakers come back as `human`/`gpt`, tagged calls as `function_call` entries and a top-level
+  `system` field as a `system` entry; Alpaca always writes `input`.
 - Gemini `functionResponse.response` is an object while the canonical result is text: an
   object other than `{"result": <string>}` is read as its JSON text, and results are written
   as `{"result": text}`. Images inside tool results are dropped for OpenAI and Gemini.
