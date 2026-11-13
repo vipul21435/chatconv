@@ -31,7 +31,7 @@ FILES = {
 }
 
 # OpenAI-style messages with tool_calls, via the dataset viewer API (Apache-2.0)
-PAGED = {"toolace_parsed.jsonl": ("minpeter/toolace-parsed", "toolace", "train", 3000)}
+PAGED = {"toolace_parsed.jsonl": ("minpeter/toolace-parsed", "toolace", "train", 2500)}
 
 
 def get(url: str, tries: int = 6) -> bytes:
