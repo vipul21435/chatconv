@@ -7,7 +7,7 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from chatconv.formats import FORMATS, FormatError
-from chatconv.losses import Policy, run_steps
+from chatconv.losses import FLAG_CODES, Policy, run_steps
 
 from .strategies import conversations
 
@@ -65,5 +65,5 @@ def test_fitted_conversation_is_a_fixed_point(name, conv, policy):
     record, losses = _write(fmt, conv, policy)
     back = fmt.read(record)
     again, more = fmt.write(back, policy)
-    assert more == []
+    assert {loss.code for loss in more} <= FLAG_CODES  # flags repeat; nothing else is lost
     assert again == record

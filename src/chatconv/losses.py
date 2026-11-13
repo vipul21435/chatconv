@@ -48,6 +48,10 @@ LOSS_CODES: dict[str, str] = {
 }
 
 
+#: Codes that flag something the target layout does not allow without rewriting it.
+FLAG_CODES = frozenset({"order_broken"})
+
+
 @dataclass(frozen=True)
 class Loss:
     """One thing a conversion could not carry.
