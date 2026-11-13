@@ -29,11 +29,16 @@ LOSS_CODES: dict[str, str] = {
     "turn_split": "assistant text and tool calls written as separate turns",
     "parts_reordered": "text moved before the tool calls of the same turn",
     "turns_merged": "consecutive turns with the same role merged",
+    "turns_added": "empty turns added where the target needs a fixed order of roles",
     "tool_ids_invented": "tool-call ids created where the source had none",
     "tool_ids_dropped": "tool-call ids removed",
     "tool_result_names_dropped": "tool names on tool results removed",
+    "tool_result_names_inferred": "tool names on results taken from the call they answer",
+    "arguments_wrapped": "tool-call arguments that were not a JSON object wrapped in one",
     "tool_error_flag_dropped": "the error flag on tool results removed",
+    "tool_calls_as_text": "tool calls written as JSON text in the assistant turn",
     "tool_calls_dropped": "tool calls removed",
+    "tool_results_as_text": "tool results written as text in a user turn",
     "tool_results_dropped": "tool results removed",
     "tools_dropped": "tool declarations removed",
     "extra_dropped": "fields the target format has no place for removed",
@@ -81,6 +86,9 @@ class Policy:
     extra: str = "keep"
     """Unknown fields read from the source: ``keep`` them in JSON targets or ``drop`` them."""
 
+    tools: str = "text"
+    """Target without tool calls: write calls and results as ``text`` or ``drop`` them."""
+
     image_placeholder: str = "<image>"
 
     def __post_init__(self) -> None:
@@ -89,6 +97,7 @@ class Policy:
             "images": ("drop", "placeholder"),
             "system_turns": ("user", "drop"),
             "extra": ("keep", "drop"),
+            "tools": ("text", "drop"),
         }
         for name, values in allowed.items():
             if getattr(self, name) not in values:

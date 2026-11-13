@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from itertools import count
 
 from .losses import Loss, Policy, Step, step
@@ -363,4 +364,176 @@ def text_before_calls(conv: Conversation, policy: Policy) -> list[Loss]:
         if ordered != turn.parts:
             turn.parts = ordered
             losses.append(Loss("parts_reordered", i))
+    return losses
+
+
+@step("fold system prompt", "system_folded", "system_dropped")
+def fold_system(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no system slot: prepend it to the first user turn, or drop it."""
+    if not conv.system:
+        return []
+    texts, conv.system = conv.system, []
+    if policy.system == "drop":
+        return [Loss("system_dropped", None, f"{len(texts)} part(s)")]
+    first = next((t for t in conv.turns if t.role == "user"), None)
+    if first is None:
+        first = Turn("user", [])
+        conv.turns.insert(0, first)
+    first.parts[:0] = [Text(t.text) for t in texts]
+    return [Loss("system_folded", None, f"{len(texts)} part(s)")]
+
+
+@step("drop tool declarations", "tools_dropped")
+def drop_tools(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no place for tool declarations."""
+    if not conv.tools:
+        return []
+    names = ", ".join(spec.name for spec in conv.tools)
+    conv.tools = []
+    return [Loss("tools_dropped", None, names)]
+
+
+def call_text(call: ToolCall) -> str:
+    """The text a tool call becomes in a target without tool calls."""
+    return json.dumps({"name": call.name, "arguments": call.arguments}, ensure_ascii=False)
+
+
+@step(
+    "tools as text",
+    "tool_calls_as_text",
+    "tool_calls_dropped",
+    "tool_results_as_text",
+    "tool_results_dropped",
+)
+def tools_as_text(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no tool calls or tool turns.
+
+    With ``policy.tools == "text"`` each call becomes a JSON text part in its place and each
+    tool turn becomes a user turn holding the results' text; with ``drop`` both go.
+    """
+    losses: list[Loss] = []
+    turns: list[Turn] = []
+    for i, turn in enumerate(conv.turns):
+        if turn.role == "tool":
+            if policy.tools == "drop":
+                losses.append(Loss("tool_results_dropped", i, f"{len(turn.parts)} result(s)"))
+                continue
+            parts: list = []
+            for res in turn.parts:
+                assert isinstance(res, ToolResult)
+                parts.extend(res.content)
+            turns.append(Turn("user", parts, None, turn.meta))
+            losses.append(Loss("tool_results_as_text", i, f"{len(turn.parts)} result(s)"))
+            continue
+        calls = [p for p in turn.parts if isinstance(p, ToolCall)]
+        if calls:
+            if policy.tools == "drop":
+                turn.parts = [p for p in turn.parts if not isinstance(p, ToolCall)]
+                losses.append(Loss("tool_calls_dropped", i, f"{len(calls)} call(s)"))
+            else:
+                turn.parts = [
+                    Text(call_text(p)) if isinstance(p, ToolCall) else p for p in turn.parts
+                ]
+                losses.append(Loss("tool_calls_as_text", i, f"{len(calls)} call(s)"))
+        turns.append(turn)
+    conv.turns = turns
+    return losses
+
+
+def alternate(first: str = "user", last: str | None = None) -> Step:
+    """For targets that need user and assistant turns to alternate.
+
+    Consecutive turns with the same role merge (parts concatenated, the first turn's name and
+    metadata kept); an empty turn is added where the order needs one: before an opening
+    assistant turn when ``first`` is ``user``, and at the end when ``last`` names a role.
+    Run it after tool and system turns have been removed.
+    """
+
+    @step("alternate roles", "turns_merged", "turns_added")
+    def run(conv: Conversation, policy: Policy) -> list[Loss]:
+        losses: list[Loss] = []
+        turns: list[Turn] = []
+        for i, turn in enumerate(conv.turns):
+            if turns and turns[-1].role == turn.role:
+                turns[-1].parts.extend(turn.parts)
+                for key, value in turn.meta.items():
+                    turns[-1].meta.setdefault(key, value)
+                losses.append(Loss("turns_merged", i, turn.role))
+                continue
+            turns.append(turn)
+        if first == "user" and (not turns or turns[0].role != "user"):
+            turns.insert(0, Turn("user", []))
+            losses.append(Loss("turns_added", 0, "user"))
+        if last is not None and turns[-1].role != last:
+            turns.append(Turn(last, []))
+            losses.append(Loss("turns_added", len(turns) - 1, last))
+        conv.turns = turns
+        return losses
+
+    return run
+
+
+@step("wrap arguments", "arguments_wrapped")
+def wrap_arguments(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets whose call arguments must be a JSON object: raw text goes under ``_raw``."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        for part in turn.parts:
+            if isinstance(part, ToolCall) and isinstance(part.arguments, str):
+                part.arguments = {"_raw": part.arguments}
+                losses.append(Loss("arguments_wrapped", i, part.name))
+    return losses
+
+
+@step("image detail", "image_detail_dropped")
+def drop_image_detail(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with no image detail setting."""
+    losses: list[Loss] = []
+    for i, turn in enumerate(conv.turns):
+        parts = list(turn.parts)
+        for part in turn.parts:
+            if isinstance(part, ToolResult):
+                parts.extend(part.content)
+        n = 0
+        for part in parts:
+            if isinstance(part, Image) and part.detail is not None:
+                part.detail = None
+                n += 1
+        if n:
+            losses.append(Loss("image_detail_dropped", i, f"{n} image(s)"))
+    return losses
+
+
+@step("infer result names", "tool_result_names_inferred")
+def infer_result_names(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets that need a tool name on every result.
+
+    A result with neither id nor name takes the name of the first unanswered call of the
+    latest assistant turn, or ``unknown`` when there is none.
+    """
+    losses: list[Loss] = []
+    pending: list[ToolCall] = []
+    for i, turn in enumerate(conv.turns):
+        if turn.role == "assistant":
+            calls = [p for p in turn.parts if isinstance(p, ToolCall)]
+            if calls:
+                pending = list(calls)
+            continue
+        for part in turn.parts:
+            if not isinstance(part, ToolResult):
+                continue
+            match = next(
+                (
+                    c
+                    for c in pending
+                    if (part.id is not None and c.id == part.id)
+                    or (part.id is None and part.name is not None and c.name == part.name)
+                ),
+                None,
+            )
+            if part.name is None:
+                match = match or (pending[0] if pending else None)
+                part.name = match.name if match else "unknown"
+                losses.append(Loss("tool_result_names_inferred", i, part.name))
+            pending = [c for c in pending if c is not match]
     return losses
