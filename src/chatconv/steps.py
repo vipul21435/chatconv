@@ -437,12 +437,13 @@ def tools_as_text(conv: Conversation, policy: Policy, results: bool = True) -> l
     return losses
 
 
-def alternate(first: str = "user", last: str | None = None) -> Step:
+def alternate(first: str = "user", last: str | None = None, fill_empty: bool = True) -> Step:
     """For targets that need user and assistant turns to alternate.
 
     Consecutive turns with the same role merge (parts concatenated, the first turn's name and
     metadata kept); an empty turn is added where the order needs one: before an opening
     assistant turn when ``first`` is ``user``, and at the end when ``last`` names a role.
+    With ``fill_empty`` false a conversation with no turns stays empty.
     Run it after tool and system turns have been removed.
     """
 
@@ -458,6 +459,8 @@ def alternate(first: str = "user", last: str | None = None) -> Step:
                 losses.append(Loss("turns_merged", i, turn.role))
                 continue
             turns.append(turn)
+        if not turns and not fill_empty:
+            return losses
         if first == "user" and (not turns or turns[0].role != "user"):
             turns.insert(0, Turn("user", []))
             losses.append(Loss("turns_added", 0, "user"))

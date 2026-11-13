@@ -5,7 +5,8 @@
 * ``llama3`` writes the Llama 3 instruct layout
   ``<|begin_of_text|><|start_header_id|>{role}<|end_header_id|>\\n\\n{content}<|eot_id|>``, with
   each content stripped of surrounding whitespace as the published chat template does.
-* ``mistral`` writes the Mistral instruct layout ``<s>[INST] {user} [/INST]{assistant}</s>``.
+* ``mistral`` writes the layout of the chat template published with Mistral-7B-Instruct v0.1
+  and v0.2: ``<s> [INST] {system}\\n\\n{user} [/INST] {assistant}</s> [INST] {user} [/INST]``.
 
 The last two are one-way: they render for training or inference and are not read back.
 Tool calls (and, for the one-way renderers, tool results) become text per ``--tools``.
@@ -17,6 +18,7 @@ import re
 from typing import Any
 
 from .. import steps as S
+from ..losses import Loss, Policy, step
 from ..model import Conversation, Text, ToolResult, Turn
 from .base import Format, FormatError, expect, extras
 
@@ -120,6 +122,17 @@ class Llama3(Format):
         return {**conv.meta, "text": "<|begin_of_text|>" + body}
 
 
+@step("mistral system prompt", "system_folded", "system_dropped")
+def _mistral_system(conv: Conversation, policy: Policy) -> list[Loss]:
+    """The template puts the system prompt inside the first instruction, or nowhere."""
+    if not conv.system:
+        return []
+    if policy.system == "drop" or not conv.turns:
+        conv.system = []
+        return [Loss("system_dropped")]
+    return [Loss("system_folded", None, "into the first [INST] block")]
+
+
 class Mistral(Format):
     name = "mistral"
     one_way = True
@@ -130,18 +143,21 @@ class Mistral(Format):
         S.system_turns,
         S.names,
         S.images(),
-        S.fold_system,
-        S.alternate(first="user"),
+        S.join_system,
+        _mistral_system,
+        S.alternate(first="user", fill_empty=False),
         S.join_text("\n"),
     )
     tokens = ("<s>", "</s>", "[INST]", "[/INST]")
 
     def encode(self, conv: Conversation) -> dict[str, Any]:
         out = "<s>"
-        turns = conv.turns
-        for k in range(0, len(turns), 2):
-            user = _check(_text(turns[k].parts), self.tokens)
-            out += (" " if k else "") + f"[INST] {user} [/INST]"
-            if k + 1 < len(turns):
-                out += _check(_text(turns[k + 1].parts), self.tokens) + "</s>"
+        for k, turn in enumerate(conv.turns):
+            content = _check(_text(turn.parts), self.tokens)
+            if turn.role == "user":
+                if k == 0 and conv.system:
+                    content = _check(conv.system[0].text, self.tokens) + "\n\n" + content
+                out += f" [INST] {content} [/INST]"
+            else:
+                out += f" {content}</s>"
         return {**conv.meta, "text": out}

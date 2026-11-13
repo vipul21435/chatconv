@@ -75,20 +75,31 @@ def test_llama3_rendering():
         get_format("llama3").read(out)
 
 
-def test_mistral_rendering_folds_system():
+def test_mistral_rendering_matches_the_v01_v02_template():
+    """Expected strings worked out from the chat_template in the published tokenizer_config.json
+    of Mistral-7B-Instruct v0.1 and v0.2 (the two templates are identical)."""
     conv = Conversation(
-        system=[Text("Be brief.")],
+        system=[Text("You translate.")],
         turns=[
-            Turn("user", [Text("Hello")]),
-            Turn("assistant", [Text("Hi.")]),
-            Turn("user", [Text("Bye")]),
+            Turn("user", [Text("hi")]),
+            Turn("assistant", [Text("hello there")]),
+            Turn("user", [Text("how are you")]),
+            Turn("assistant", [Text("fine")]),
         ],
     )
     out, losses = get_format("mistral").write(conv)
-    assert summarize(losses) == {"system_folded": 1, "text_joined": 1}
-    assert out["text"] == "<s>[INST] Be brief.\nHello [/INST]Hi.</s> [INST] Bye [/INST]"
+    assert summarize(losses) == {"system_folded": 1}
+    assert out["text"] == (
+        "<s> [INST] You translate.\n\nhi [/INST] hello there</s>"
+        " [INST] how are you [/INST] fine</s>"
+    )
     out, losses = get_format("mistral").write(conv, Policy(system="drop"))
-    assert out["text"] == "<s>[INST] Hello [/INST]Hi.</s> [INST] Bye [/INST]"
+    assert summarize(losses) == {"system_dropped": 1}
+    assert out["text"].startswith("<s> [INST] hi [/INST] hello there</s>")
+    lone = Conversation(system=[Text("x")])
+    out, losses = get_format("mistral").write(lone)
+    assert summarize(losses) == {"system_dropped": 1}
+    assert out["text"] == "<s>"
 
 
 def test_llama3_trims_like_the_chat_template():
