@@ -400,15 +400,8 @@ def call_text(call: ToolCall) -> str:
     return json.dumps({"name": call.name, "arguments": call.arguments}, ensure_ascii=False)
 
 
-@step(
-    "tools as text",
-    "tool_calls_as_text",
-    "tool_calls_dropped",
-    "tool_results_as_text",
-    "tool_results_dropped",
-)
-def tools_as_text(conv: Conversation, policy: Policy) -> list[Loss]:
-    """For targets with no tool calls or tool turns.
+def tools_as_text(conv: Conversation, policy: Policy, results: bool = True) -> list[Loss]:
+    """For targets with no tool calls (and, with ``results``, no tool turns either).
 
     With ``policy.tools == "text"`` each call becomes a JSON text part in its place and each
     tool turn becomes a user turn holding the results' text; with ``drop`` both go.
@@ -416,7 +409,7 @@ def tools_as_text(conv: Conversation, policy: Policy) -> list[Loss]:
     losses: list[Loss] = []
     turns: list[Turn] = []
     for i, turn in enumerate(conv.turns):
-        if turn.role == "tool":
+        if turn.role == "tool" and results:
             if policy.tools == "drop":
                 losses.append(Loss("tool_results_dropped", i, f"{len(turn.parts)} result(s)"))
                 continue
@@ -428,7 +421,7 @@ def tools_as_text(conv: Conversation, policy: Policy) -> list[Loss]:
             losses.append(Loss("tool_results_as_text", i, f"{len(turn.parts)} result(s)"))
             continue
         calls = [p for p in turn.parts if isinstance(p, ToolCall)]
-        if calls:
+        if calls and turn.role == "assistant":
             if policy.tools == "drop":
                 turn.parts = [p for p in turn.parts if not isinstance(p, ToolCall)]
                 losses.append(Loss("tool_calls_dropped", i, f"{len(calls)} call(s)"))
@@ -535,3 +528,28 @@ def infer_result_names(conv: Conversation, policy: Policy) -> list[Loss]:
                 losses.append(Loss("tool_result_names_inferred", i, part.name))
             pending = [c for c in pending if c is not match]
     return losses
+
+
+tools_to_text = step(
+    "tools as text",
+    "tool_calls_as_text",
+    "tool_calls_dropped",
+    "tool_results_as_text",
+    "tool_results_dropped",
+)(tools_as_text)
+"""Calls and tool turns become text (or go), per ``policy.tools``."""
+
+calls_to_text = step("calls as text", "tool_calls_as_text", "tool_calls_dropped")(
+    lambda conv, policy: tools_as_text(conv, policy, results=False)
+)
+"""Calls become text (or go); tool turns stay."""
+
+
+@step("join system prompt", "text_joined")
+def join_system(conv: Conversation, policy: Policy) -> list[Loss]:
+    """For targets with one system string."""
+    if len(conv.system) <= 1:
+        return []
+    n = len(conv.system)
+    conv.system = [Text("\n".join(t.text for t in conv.system))]
+    return [Loss("text_joined", None, f"system, {n} parts")]

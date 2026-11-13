@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from .alpaca import Alpaca
 from .anthropic import Anthropic
 from .base import Format, FormatError
 from .gemini import Gemini
 from .openai import OpenAI
 from .sharegpt import ShareGPT
 
-FORMATS: dict[str, Format] = {f.name: f for f in (OpenAI(), Anthropic(), Gemini(), ShareGPT())}
+FORMATS: dict[str, Format] = {
+    f.name: f
+    for f in (
+        OpenAI(),
+        Anthropic(),
+        Gemini(),
+        ShareGPT(),
+        Alpaca(),
+    )
+}
 
 
 def get_format(name: str) -> Format:

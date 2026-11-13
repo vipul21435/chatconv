@@ -1,0 +1,3 @@
+{"instruction": "Give the plural of the word.", "input": "cactus", "output": "cacti"}
+{"instruction": "Name a colour of the rainbow.", "input": "", "output": "Indigo."}
+{"instruction": "And one more?", "input": "", "output": "Violet.", "system": "Answer in one word.", "history": [["Name a colour of the rainbow.", "Indigo."]], "source": "handmade"}
