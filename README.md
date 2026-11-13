@@ -290,6 +290,9 @@ Data sources and the licence stated on each dataset card:
 
 - [sftlint](https://github.com/vipul21435/sftlint) lints chat and tool-calling datasets;
   chatconv converts them.
+- [trajdistill](https://github.com/vipul21435/trajdistill): turns agent trajectories into fine-tuning samples, with every filter counted.
+- [callmatch](https://github.com/vipul21435/callmatch): scores predicted tool calls against expected ones and classifies every miss.
+- [snippetcheck](https://github.com/vipul21435/snippetcheck): static checks for the code inside instruction and chat datasets.
 
 ## References
 
