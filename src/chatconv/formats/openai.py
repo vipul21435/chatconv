@@ -135,7 +135,10 @@ class OpenAI(Format):
                 conv.turns.append(Turn("assistant", parts, name, meta))
             elif role == "tool":
                 call_id = msg.get("tool_call_id")
-                expect(isinstance(call_id, str), f"{where}: tool message without tool_call_id")
+                expect(
+                    isinstance(call_id, str) or (call_id is None and isinstance(name, str)),
+                    f"{where}: tool message without tool_call_id or name",
+                )
                 content = _text_parts(msg.get("content"), where, images=False)
                 conv.turns.append(Turn("tool", [ToolResult(content, call_id, name, meta=meta)]))
             elif role == "function":

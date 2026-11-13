@@ -112,3 +112,25 @@ def test_text_after_calls_is_reordered():
 def test_bad_records_raise(record, message):
     with pytest.raises(FormatError, match=message):
         OPENAI.read(record)
+
+
+def test_tool_message_with_name_but_no_id():
+    """Some public datasets give tool results a name and no tool_call_id."""
+    record = {
+        "messages": [
+            {"role": "user", "content": "q", "name": None, "tool_calls": None},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"type": "function", "function": {"name": "find", "arguments": "{}"}}
+                ],
+            },
+            {"role": "tool", "name": "find", "content": "found", "tool_calls": None},
+        ]
+    }
+    conv = OPENAI.read(record)
+    assert conv.turns[2].parts == [ToolResult([Text("found")], None, "find")]
+    out, losses = OPENAI.write(conv)
+    assert losses == []
+    assert out["messages"][1]["function_call"]["name"] == "find"
