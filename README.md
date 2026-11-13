@@ -250,8 +250,19 @@ Data sources and the licence stated on each dataset card:
 - Gemini `functionResponse.response` is an object while the canonical result is text: an
   object other than `{"result": <string>}` is read as its JSON text, and results are written
   as `{"result": text}`. Images inside tool results are dropped for OpenAI and Gemini.
-- In ShareGPT, a `gpt` value made only of `<tool_call>` blocks of JSON is always read as tool
-  calls; `tool` entries keep their text as it is, `<tool_response>` tags included.
+- In ShareGPT, a `gpt` value made only of `<tool_call>` blocks of JSON or Python-literal dicts
+  (parsed with `ast.literal_eval`, never `eval`) is always read as tool calls; `tool` entries
+  keep their text as it is, `<tool_response>` tags included. Blocks that parse as neither stay
+  assistant text and are counted as the read note `tagged_calls_unparsed`, which `losses`,
+  `convert` and `roundtrip` print beside the losses. In hermes-function-calling-v1 this is 793
+  of the 1,893 records: their blocks hold a literal backslash-n instead of a newline and nest
+  the tool name inside `arguments`. Read notes do not make a record lossy, so the lossless
+  shares for that dataset include these records.
+- ShareGPT entries are written in conversation order. Output that breaks the order of the
+  LLaMA-Factory layout [5] (after the system prompt, `human`/`observation` in odd positions and
+  `gpt`/`function_call` in even ones) is reported as `order_broken` but not rewritten: parallel
+  tool results give consecutive `observation` entries, assistant text before a call gives `gpt`
+  then `function_call`, and same-role turns stay consecutive.
 - Tool declarations embedded in a system prompt's `<tools>` block are left in the system text;
   only a `tools` field is parsed.
 - ChatML has no standard tool-call syntax; calls are written as JSON text per `--tools`. Text
