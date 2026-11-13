@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from .base import Format, FormatError
 from .openai import OpenAI
+from .sharegpt import ShareGPT
 
-FORMATS: dict[str, Format] = {f.name: f for f in (OpenAI(),)}
+FORMATS: dict[str, Format] = {f.name: f for f in (OpenAI(), ShareGPT())}
 
 
 def get_format(name: str) -> Format:
