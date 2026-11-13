@@ -84,7 +84,7 @@ Policies, one flag per lossy choice:
 |---|---|---|
 | `--system` | `fold`, `drop` | has no system slot (Mistral): prepend to the first user turn |
 | `--system-turns` | `user`, `drop` | has no system message after the start (Gemini, Alpaca, Mistral) |
-| `--images` | `drop`, `placeholder` | has no image parts (ShareGPT, Alpaca, text formats) |
+| `--images` | `drop`, `placeholder` | has no image parts (ShareGPT, Alpaca, text formats; tool results in OpenAI and Gemini) |
 | `--tools` | `text`, `drop` | has no tool calls (Alpaca, ChatML, Llama 3, Mistral) |
 | `--extra` | `keep`, `drop` | unknown source fields: keep where the target has room, or drop all |
 
